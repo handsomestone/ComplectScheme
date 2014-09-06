@@ -7,7 +7,14 @@
         AssemblyName : string;
         ExecutableName : string;
         MainClassName : string;
-        EntryPointName : string }
+        EntryPointName : string
+        }
+
+    type Value =
+        | Int of int
+
+    type Expr =
+        | Immediate of Value
 
     let compile asmInfo outFile generateIL =
         let domain = AppDomain.CurrentDomain  //AppDomain.CreateDomain("Sandbox")
@@ -37,11 +44,25 @@
     let generateMain (ilGen : ILGenerator) =
         
         // TODO -- pass string args to Console.WriteLine
-        ilGen.Emit(OpCodes.Ldarg_0)
-        ilGen.Emit(OpCodes.Ldelem, 0)
+        //ilGen.Emit(OpCodes.Ldarg_0)
+        //ilGen.Emit(OpCodes.Ldelem, 0)
         
         ilGen.Emit(OpCodes.Ldc_I4, 73)
         ilGen.Emit(OpCodes.Ret)
+
+    let encodeFixnum x =
+        let shift = 2
+        let tag = 0
+        let mask = 2
+        x >>> shift
+
+    let immRep (x : Value) =
+        match x with
+            | Int(i) ->  encodeFixnum i
+
+    let emitExpr expr =
+        match expr with
+            | Immediate(i) -> immRep i
 
     [<EntryPoint>]
     let main argv = 
