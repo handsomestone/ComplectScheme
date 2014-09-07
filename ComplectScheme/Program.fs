@@ -13,8 +13,38 @@
     type Value =
         | Int of int
 
+    type Op =
+        | Add1
+
     type Expr =
         | Immediate of Value
+        | PrimitiveCall of Op * Expr
+        
+    let encodeFixnum x =
+        let shift = 2
+        let tag = 0
+        let mask = 2
+        x >>> shift
+
+    let immRep (x : Value) =
+        match x with
+            | Int(i) ->  encodeFixnum i
+
+    type ILEmitter(ilGen : ILGenerator) =
+        let emitCall op =
+            ()
+
+        let emitImmediate (imm : int) =
+            ilGen.Emit(OpCodes.Ldc_I4, imm)
+
+        member this.EmitExpr expr =
+            let rec emitExpr expr =
+                match expr with
+                    | Immediate(i) -> emitImmediate (immRep i)
+                    | PrimitiveCall(op, v) ->
+                        emitExpr v
+                        emitCall op
+            emitExpr expr
 
     let compile asmInfo outFile generateIL =
         let domain = AppDomain.CurrentDomain  //AppDomain.CreateDomain("Sandbox")
@@ -42,36 +72,25 @@
         mainType
 
     let generateMain (ilGen : ILGenerator) =
-        
-        // TODO -- pass string args to Console.WriteLine
-        //ilGen.Emit(OpCodes.Ldarg_0)
-        //ilGen.Emit(OpCodes.Ldelem, 0)
-        
-        ilGen.Emit(OpCodes.Ldc_I4, 73)
+        let emitter = new ILEmitter(ilGen)
+
+        let expr = Expr.Immediate(Value.Int(23))
+        emitter.EmitExpr(expr)
+
         ilGen.Emit(OpCodes.Ret)
 
-    let encodeFixnum x =
-        let shift = 2
-        let tag = 0
-        let mask = 2
-        x >>> shift
-
-    let immRep (x : Value) =
-        match x with
-            | Int(i) ->  encodeFixnum i
-
-    let emitExpr expr =
-        match expr with
-            | Immediate(i) -> immRep i
+    // Create a new instance of the main type and call the "Main" method
+    let drive (mainType : Type) =
+        let instance = Activator.CreateInstance(mainType)
+        let mainMethod = mainType.GetMethod("Main")
+        mainMethod.Invoke(instance, [| 42 |])
 
     [<EntryPoint>]
     let main argv = 
         let asmInfo = { AssemblyName = "complect"; EntryPointName = "Main"; MainClassName = "MainClass"; ExecutableName = "program.exe" }
         let mainType = compile asmInfo asmInfo.ExecutableName generateMain
 
-        let instance = Activator.CreateInstance(mainType)
-        let mainMethod = mainType.GetMethod("Main")
-        let ret = mainMethod.Invoke(instance, [| [|"hello"; "world"|] |])
+        let ret = drive mainType
         //let ret = mainMethod.Invoke(instance, [| |])
 
         printfn "%A" ret
