@@ -82,17 +82,17 @@ module Compiler =
         ilGen.Emit(OpCodes.Ret)
 
     // Create a new instance of the main type and call the "Main" method
-    let drive (mainType : Type) =
+    let drive (mainType : Type) args =
         let instance = Activator.CreateInstance(mainType)
         let mainMethod = mainType.GetMethod("Main")
-        mainMethod.Invoke(instance, [| Array.empty<string> |])
+        mainMethod.Invoke(instance, args)
 
     [<EntryPoint>]
     let main argv = 
         let asmInfo = { AssemblyName = "complect"; EntryPointName = "Main"; MainClassName = "MainClass"; ExecutableName = "program.exe" }
         let mainType = compile asmInfo asmInfo.ExecutableName generateMain
 
-        let ret = drive mainType
+        let ret = drive mainType [| Array.empty<string> |]
 
         printfn "%A" ret
         Console.ReadLine() |> ignore
