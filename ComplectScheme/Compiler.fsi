@@ -4,11 +4,13 @@ open System.Reflection.Emit
 
 module Compiler =
     type AssemblyInfo
-//    type AssemblyInfo = {
-//        AssemblyName : string;
-//        ExecutableName : string;
-//        MainClassName : string;
-//        EntryPointName : string
-//        }
 
     val compile : AssemblyInfo -> string -> (ILGenerator -> unit) -> System.Type
+
+    type Value
+    type Op
+    type Expr
+
+    type ILEmitter =
+        new : ILGenerator -> ILEmitter
+        member EmitExpr : Expr -> unit
