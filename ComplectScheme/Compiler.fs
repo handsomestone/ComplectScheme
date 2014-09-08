@@ -32,9 +32,15 @@ module Compiler =
         match x with
             | Int(i) ->  encodeFixnum i
 
+    module PrimitiveFunctions =
+        let Add1(ilGen : ILGenerator) =
+            ilGen.Emit(OpCodes.Ldc_I4_1)
+            ilGen.Emit(OpCodes.Add_Ovf)
+
     type ILEmitter(ilGen : ILGenerator) =
         let emitCall op =
-            ()
+            match op with
+                | Op.Add1 -> PrimitiveFunctions.Add1 ilGen
 
         let emitImmediate (imm : int) =
             ilGen.Emit(OpCodes.Ldc_I4, imm)
