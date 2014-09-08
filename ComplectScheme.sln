@@ -1,9 +1,11 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 2013
-VisualStudioVersion = 12.0.30723.0
+VisualStudioVersion = 12.0.21005.1
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "ComplectScheme", "ComplectScheme\ComplectScheme.fsproj", "{5E238D70-08E4-40E8-9B81-87C5D7F1ABB1}"
+EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "ComplectSchemeUnitTests", "ComplectSchemeUnitTests\ComplectSchemeUnitTests.fsproj", "{2FF2AE16-8266-406E-A938-2955AFFBED6F}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -15,6 +17,10 @@ Global
 		{5E238D70-08E4-40E8-9B81-87C5D7F1ABB1}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5E238D70-08E4-40E8-9B81-87C5D7F1ABB1}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{5E238D70-08E4-40E8-9B81-87C5D7F1ABB1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2FF2AE16-8266-406E-A938-2955AFFBED6F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2FF2AE16-8266-406E-A938-2955AFFBED6F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2FF2AE16-8266-406E-A938-2955AFFBED6F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2FF2AE16-8266-406E-A938-2955AFFBED6F}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
