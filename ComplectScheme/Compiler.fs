@@ -14,41 +14,65 @@ module Compiler =
 
     type Value =
         | Int of int
+        | Char of char
+        | Bool of bool
 
     type Op =
         | Add1
+        | Sub1
 
     type Expr =
         | Immediate of Value
         | PrimitiveCall of Op * Expr
         
-    let encodeFixnum x =
+    let encodeFixnum (x : int) =
         let shift = 2
-        let tag = 0
-        let mask = 2
-        x >>> shift
+        let tag = 0b00
+        let mask = 0b11
+        (x <<< shift) ||| tag
+
+    let encodeChar (x : char) =
+        let shift = 8
+        let tag = 0b00001111
+        let mask = 0b11111111
+        (int(x) <<< shift) ||| tag
+
+    let encodeBool (x : bool) =
+        let shift = 7
+        let tag = 0b0011111
+        let mask = 0b1111111
+        ((if x then 1 else 0) <<< shift) ||| tag
 
     let immRep (x : Value) =
         match x with
-            | Int(i) ->  encodeFixnum i
+            | Int(i) -> encodeFixnum i
+            | Char(c) -> encodeChar c
+            | Bool(b) -> encodeBool b
 
     module PrimitiveFunctions =
-        let Add1(ilGen : ILGenerator) =
-            ilGen.Emit(OpCodes.Ldc_I4_1)
+        let Add(ilGen : ILGenerator) =
             ilGen.Emit(OpCodes.Add_Ovf)
 
+        let Sub(ilGen : ILGenerator) =
+            ilGen.Emit(OpCodes.Sub_Ovf)
+
     type ILEmitter(ilGen : ILGenerator) =
+        let emitImmediate (ilGen : ILGenerator) (imm : int) =
+            ilGen.Emit(OpCodes.Ldc_I4, imm)
+
         let emitCall op =
             match op with
-                | Op.Add1 -> PrimitiveFunctions.Add1 ilGen
-
-        let emitImmediate (imm : int) =
-            ilGen.Emit(OpCodes.Ldc_I4, imm)
+                | Op.Add1 -> 
+                    emitImmediate ilGen (immRep (Value.Int(1)))
+                    PrimitiveFunctions.Add ilGen
+                | Op.Sub1 -> 
+                    emitImmediate ilGen (immRep (Value.Int(1)))
+                    PrimitiveFunctions.Sub ilGen
 
         member this.EmitExpr expr =
             let rec emitExpr expr =
                 match expr with
-                    | Immediate(i) -> emitImmediate (immRep i)
+                    | Immediate(i) -> emitImmediate ilGen (immRep i)
                     | PrimitiveCall(op, v) ->
                         emitExpr v
                         emitCall op
