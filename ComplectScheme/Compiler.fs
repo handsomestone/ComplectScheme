@@ -30,59 +30,74 @@ module Compiler =
     module PrimitiveTypes =
         type TypeInfo = { Tag : int; Mask : int }
         module TypeInfos =
-            let Fixnum = { Tag = 0b0000; Mask = 0b0011 }
+            let Int = { Tag = 0b0000; Mask = 0b0011 }
             let Char = { Tag = 0b00001111; Mask = 0b11111111 }
             let Bool = { Tag = 0b00011111; Mask = 0b01111111 }
             let Null = { Tag = 0b00101111; Mask = 0b11111111 }
 
-        let encodeFixnum (x : int) =
-            (x <<< 2) ||| TypeInfos.Fixnum.Tag
+        let encodeInt (x : int) =
+            (x <<< 2) ||| TypeInfos.Int.Tag
 
-        let isFixnum (x : int) =
-            let { Tag = tag; Mask = mask} = TypeInfos.Fixnum
-            (x &&& mask) = tag
+        let (|Int|_|) x =
+            let { Tag = tag; Mask = mask} = TypeInfos.Int
+            if (x &&& mask) = tag then Some(Value.Int(x >>> 2))
+            else None
 
         let encodeChar (x : char) =
             (int(x) <<< 8) ||| TypeInfos.Char.Tag
 
-        let isChar (x : int) =
+        let (|Char|_|) x =
             let { Tag = tag; Mask = mask} = TypeInfos.Char
-            (x &&& mask) = tag
+            if (x &&& mask) = tag then Some(Value.Char(char((x >>> 8) &&& 0xff)))
+            else None
 
         let encodeBool (x : bool) =
             ((if x then 1 else 0) <<< 7) ||| TypeInfos.Bool.Tag
 
-        let isBool (x : int) =
+        let (|Bool|_|) x =
             let { Tag = tag; Mask = mask} = TypeInfos.Bool
-            (x &&& mask) = tag
+            if (x &&& mask) = tag then Some(Value.Bool(((x >>> 8) &&& 0b1) = 0b1))
+            else None
 
         let encodeNull =
             TypeInfos.Null.Tag
 
-        let isNull (x : int) =
-            x = TypeInfos.Null.Tag
+        let (|Null|_|) x =
+            let { Tag = tag; Mask = mask} = TypeInfos.Null
+            if (x &&& mask) = tag then Some(Value.Null)
+            else None
 
         let encodeValue (x : Value) =
             match x with
-                | Int(i) -> encodeFixnum i
-                | Char(c) -> encodeChar c
-                | Bool(b) -> encodeBool b
-                | Null -> encodeNull
+                | Value.Int i -> encodeInt i
+                | Value.Char c -> encodeChar c
+                | Value.Bool b -> encodeBool b
+                | Value.Null -> encodeNull
+
+        let decodeValue (x : int) =
+            match x with  // active patterns, not Value union cases
+                | Int i -> i
+                | Char c -> c
+                | Bool b -> b
+                | Null n -> n
+                | _ -> failwith "Unknown type"
 
         let convertRawToInt (ilGen : ILGenerator) =
             ilGen.Emit(OpCodes.Ldc_I4_2)
             ilGen.Emit(OpCodes.Shl)
+            ilGen.Emit(OpCodes.Ldc_I4, TypeInfos.Int.Tag)
+            ilGen.Emit(OpCodes.Or)
 
         let convertRawToChar (ilGen : ILGenerator) =
             ilGen.Emit(OpCodes.Ldc_I4_8)
             ilGen.Emit(OpCodes.Shl)
-            ilGen.Emit(OpCodes.Ldc_I4, 0b00001111)
+            ilGen.Emit(OpCodes.Ldc_I4, TypeInfos.Char.Tag)
             ilGen.Emit(OpCodes.Or)
 
         let convertRawToBool (ilGen : ILGenerator) =
             ilGen.Emit(OpCodes.Ldc_I4_7)
             ilGen.Emit(OpCodes.Shl)
-            ilGen.Emit(OpCodes.Ldc_I4, 0b00011111)
+            ilGen.Emit(OpCodes.Ldc_I4, TypeInfos.Bool.Tag)
             ilGen.Emit(OpCodes.Or)
 
     module PrimitiveOperations =
