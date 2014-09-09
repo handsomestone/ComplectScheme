@@ -32,28 +32,28 @@ type PrimitiveTypes() =
         let expr = Expr.Immediate(Value.Int(5))
         let ret = compileAndRun expr
 
-        ret |> should equal (PrimitiveTypes.immRep (Value.Int(5)))
+        ret |> should equal (PrimitiveTypes.encodeValue (Value.Int(5)))
 
     [<TestMethod>]
     member this.``Char immediate value``() =
         let expr = Expr.Immediate(Value.Char('a'))
         let ret = compileAndRun expr
 
-        ret |> should equal (PrimitiveTypes.immRep (Value.Char('a')))
+        ret |> should equal (PrimitiveTypes.encodeValue (Value.Char('a')))
 
     [<TestMethod>]
     member this.``Bool immediate value``() =
         let expr = Expr.Immediate(Value.Bool(true))
         let ret = compileAndRun expr
 
-        ret |> should equal (PrimitiveTypes.immRep (Value.Bool(true)))
+        ret |> should equal (PrimitiveTypes.encodeValue (Value.Bool(true)))
 
     [<TestMethod>]
     member this.``Null immediate value``() =
         let expr = Expr.Immediate(Value.Null)
         let ret = compileAndRun expr
 
-        ret |> should equal (PrimitiveTypes.immRep (Value.Null))
+        ret |> should equal (PrimitiveTypes.encodeValue (Value.Null))
 
 [<TestClass>]
 type PrimitiveOperations() =
@@ -63,18 +63,18 @@ type PrimitiveOperations() =
         let expr = Expr.PrimitiveCall(Op.Add1, Expr.Immediate(Value.Int(5)))
         let ret = compileAndRun expr
 
-        ret |> should equal (PrimitiveTypes.immRep (Value.Int(6)))
+        ret |> should equal (PrimitiveTypes.encodeValue (Value.Int(6)))
 
     [<TestMethod>]
     member this.``Sub1``() =
         let expr = Expr.PrimitiveCall(Op.Sub1, Expr.Immediate(Value.Int(5)))
         let ret = compileAndRun expr
 
-        ret |> should equal (PrimitiveTypes.immRep (Value.Int(4)))
+        ret |> should equal (PrimitiveTypes.encodeValue (Value.Int(4)))
 
     [<TestMethod>]
     member this.``IsZero on 0 is true``() =
         let expr = Expr.PrimitiveCall(Op.IsZero, Expr.Immediate(Value.Int(0)))
         let ret = compileAndRun expr
 
-        ret |> should equal (PrimitiveTypes.immRep (Value.Bool(true)))
+        ret |> should equal (PrimitiveTypes.encodeValue (Value.Bool(true)))
