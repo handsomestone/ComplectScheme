@@ -15,8 +15,12 @@ module CompilerWrapper =
         emitter.EmitExpr expr
         ilGen.Emit(OpCodes.Ret)
     
-    let compile(expr) =
+    let compile expr =
         Compiler.compile asmInfo asmInfo.ExecutableName (generateMain expr)
+
+    let compileAndRun expr =
+        let mainType = compile expr
+        Compiler.drive mainType [| Array.empty<string> |]
     
 open CompilerWrapper
 
@@ -26,34 +30,30 @@ type PrimitiveTypes() =
     [<TestMethod>]
     member this.``Int immediate value``() =
         let expr = Expr.Immediate(Value.Int(5))
-        let mainType = compile expr
-        let ret = Compiler.drive mainType [| Array.empty<string> |]
+        let ret = compileAndRun expr
 
-        ret |> should equal 20  // 5 <<< 2 = 20
+        ret |> should equal (PrimitiveTypes.immRep (Value.Int(5)))
 
     [<TestMethod>]
     member this.``Char immediate value``() =
         let expr = Expr.Immediate(Value.Char('a'))
-        let mainType = compile expr
-        let ret = Compiler.drive mainType [| Array.empty<string> |]
+        let ret = compileAndRun expr
 
-        ret |> should equal 24847  // 'a' = 97; (97 <<< 8) ||| 0b00001111 =  24847
+        ret |> should equal (PrimitiveTypes.immRep (Value.Char('a')))
 
     [<TestMethod>]
     member this.``Bool immediate value``() =
         let expr = Expr.Immediate(Value.Bool(true))
-        let mainType = compile expr
-        let ret = Compiler.drive mainType [| Array.empty<string> |]
+        let ret = compileAndRun expr
 
-        ret |> should equal 159  // true = 1; (1 <<< 7) ||| 0b0011111 =  159 
+        ret |> should equal (PrimitiveTypes.immRep (Value.Bool(true)))
 
     [<TestMethod>]
     member this.``Null immediate value``() =
         let expr = Expr.Immediate(Value.Null)
-        let mainType = compile expr
-        let ret = Compiler.drive mainType [| Array.empty<string> |]
+        let ret = compileAndRun expr
 
-        ret |> should equal 47  // 0b00101111 = 47
+        ret |> should equal (PrimitiveTypes.immRep (Value.Null))
 
 [<TestClass>]
 type PrimitiveOperations() =
@@ -61,24 +61,20 @@ type PrimitiveOperations() =
     [<TestMethod>]
     member this.``Add1``() =
         let expr = Expr.PrimitiveCall(Op.Add1, Expr.Immediate(Value.Int(5)))
-        let mainType = compile expr
-        let ret = Compiler.drive mainType [| Array.empty<string> |]
+        let ret = compileAndRun expr
 
-        // PrimitiveTypes.immRep Value.Int(6)
-        ret |> should equal 24  // (5 <<< 2) + (1 <<< 2) = 24
+        ret |> should equal (PrimitiveTypes.immRep (Value.Int(6)))
 
     [<TestMethod>]
     member this.``Sub1``() =
         let expr = Expr.PrimitiveCall(Op.Sub1, Expr.Immediate(Value.Int(5)))
-        let mainType = compile expr
-        let ret = Compiler.drive mainType [| Array.empty<string> |]
+        let ret = compileAndRun expr
 
-        ret |> should equal 16  // (5 <<< 2) - (1 <<< 2) = 16
+        ret |> should equal (PrimitiveTypes.immRep (Value.Int(4)))
 
     [<TestMethod>]
     member this.``IsZero on 0 is true``() =
         let expr = Expr.PrimitiveCall(Op.IsZero, Expr.Immediate(Value.Int(0)))
-        let mainType = compile expr
-        let ret = Compiler.drive mainType [| Array.empty<string> |]
+        let ret = compileAndRun expr
 
-        ret |> should equal 159
+        ret |> should equal (PrimitiveTypes.immRep (Value.Bool(true)))
