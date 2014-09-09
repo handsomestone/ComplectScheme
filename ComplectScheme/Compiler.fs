@@ -21,6 +21,7 @@ module Compiler =
     type Op =
         | Add1
         | Sub1
+        | IsZero
 
     type Expr =
         | Immediate of Value
@@ -29,8 +30,8 @@ module Compiler =
     module PrimitiveTypes =
         let encodeFixnum (x : int) =
             let shift = 2
-            let tag = 0b00
-            let mask = 0b11
+            let tag = 0b0000
+            let mask = 0b0011
             (x <<< shift) ||| tag
 
         let encodeChar (x : char) =
@@ -41,8 +42,8 @@ module Compiler =
 
         let encodeBool (x : bool) =
             let shift = 7
-            let tag = 0b0011111
-            let mask = 0b1111111
+            let tag = 0b00011111
+            let mask = 0b01111111
             ((if x then 1 else 0) <<< shift) ||| tag
 
         let encodeNull =
@@ -55,26 +56,49 @@ module Compiler =
                 | Bool(b) -> encodeBool b
                 | Null -> encodeNull
 
-    module PrimitiveFunctions =
-        let Add(ilGen : ILGenerator) =
+    module PrimitiveOperations =
+        let Add (ilGen : ILGenerator) =
             ilGen.Emit(OpCodes.Add_Ovf)
 
-        let Sub(ilGen : ILGenerator) =
+        let Sub (ilGen : ILGenerator) =
             ilGen.Emit(OpCodes.Sub_Ovf)
+
+        let CompareEq (ilGen : ILGenerator) =
+            ilGen.Emit(OpCodes.Ceq)
 
     type ILEmitter(ilGen : ILGenerator) =
         let emitImmediate (ilGen : ILGenerator) (value : Value) =
             let imm = (PrimitiveTypes.immRep value)
             ilGen.Emit(OpCodes.Ldc_I4, imm)
 
+        let convertRawToInt (ilGen : ILGenerator) =
+            ilGen.Emit(OpCodes.Ldc_I4_2)
+            ilGen.Emit(OpCodes.Shl)
+
+        let convertRawToChar (ilGen : ILGenerator) =
+            ilGen.Emit(OpCodes.Ldc_I4_8)
+            ilGen.Emit(OpCodes.Shl)
+            ilGen.Emit(OpCodes.Ldc_I4, 0b00001111)
+            ilGen.Emit(OpCodes.Or)
+
+        let convertRawToBool (ilGen : ILGenerator) =
+            ilGen.Emit(OpCodes.Ldc_I4_7)
+            ilGen.Emit(OpCodes.Shl)
+            ilGen.Emit(OpCodes.Ldc_I4, 0b00011111)
+            ilGen.Emit(OpCodes.Or)
+
         let emitCall op =
             match op with
                 | Op.Add1 -> 
                     emitImmediate ilGen (Value.Int(1))
-                    PrimitiveFunctions.Add ilGen
+                    PrimitiveOperations.Add ilGen
                 | Op.Sub1 -> 
                     emitImmediate ilGen (Value.Int(1))
-                    PrimitiveFunctions.Sub ilGen
+                    PrimitiveOperations.Sub ilGen
+                | Op.IsZero ->
+                    emitImmediate ilGen (Value.Int(0))
+                    PrimitiveOperations.CompareEq ilGen
+                    convertRawToBool ilGen
 
         member this.EmitExpr expr =
             let rec emitExpr expr =

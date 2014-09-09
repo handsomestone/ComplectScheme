@@ -64,6 +64,7 @@ type PrimitiveOperations() =
         let mainType = compile expr
         let ret = Compiler.drive mainType [| Array.empty<string> |]
 
+        // PrimitiveTypes.immRep Value.Int(6)
         ret |> should equal 24  // (5 <<< 2) + (1 <<< 2) = 24
 
     [<TestMethod>]
@@ -73,3 +74,11 @@ type PrimitiveOperations() =
         let ret = Compiler.drive mainType [| Array.empty<string> |]
 
         ret |> should equal 16  // (5 <<< 2) - (1 <<< 2) = 16
+
+    [<TestMethod>]
+    member this.``IsZero on 0 is true``() =
+        let expr = Expr.PrimitiveCall(Op.IsZero, Expr.Immediate(Value.Int(0)))
+        let mainType = compile expr
+        let ret = Compiler.drive mainType [| Array.empty<string> |]
+
+        ret |> should equal 159
