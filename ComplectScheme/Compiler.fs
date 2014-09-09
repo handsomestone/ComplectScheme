@@ -22,6 +22,7 @@ module Compiler =
         | Add1
         | Sub1
         | IsZero
+        | IsNull
 
     type Expr =
         | Immediate of Value
@@ -125,6 +126,10 @@ module Compiler =
                     PrimitiveOperations.Sub ilGen
                 | Op.IsZero ->
                     emitImmediate ilGen (Value.Int(0))
+                    PrimitiveOperations.CompareEq ilGen
+                    PrimitiveTypes.convertRawToBool ilGen
+                | Op.IsNull ->
+                    emitImmediate ilGen (Value.Null)
                     PrimitiveOperations.CompareEq ilGen
                     PrimitiveTypes.convertRawToBool ilGen
 
