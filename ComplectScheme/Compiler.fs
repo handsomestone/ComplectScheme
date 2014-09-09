@@ -28,40 +28,39 @@ module Compiler =
         | PrimitiveCall of Op * Expr
 
     module PrimitiveTypes =
-        module Tags =
-            let Fixnum = 0b0000
-            let Char = 0b00001111
-            let Bool = 0b00011111
-            let Null = 0b00101111
-
-        module Masks =
-            let Fixnum = 0b0011
-            let Char = 0b11111111
-            let Bool = 0b01111111
+        type TypeInfo = { Tag : int; Mask : int }
+        module TypeInfos =
+            let Fixnum = { Tag = 0b0000; Mask = 0b0011 }
+            let Char = { Tag = 0b00001111; Mask = 0b11111111 }
+            let Bool = { Tag = 0b00011111; Mask = 0b01111111 }
+            let Null = { Tag = 0b00101111; Mask = 0b11111111 }
 
         let encodeFixnum (x : int) =
-            (x <<< 2) ||| Tags.Fixnum
+            (x <<< 2) ||| TypeInfos.Fixnum.Tag
 
         let isFixnum (x : int) =
-            (x &&& Masks.Fixnum) = Tags.Fixnum
+            let { Tag = tag; Mask = mask} = TypeInfos.Fixnum
+            (x &&& mask) = tag
 
         let encodeChar (x : char) =
-            (int(x) <<< 8) ||| Tags.Char
+            (int(x) <<< 8) ||| TypeInfos.Char.Tag
 
         let isChar (x : int) =
-            (x &&& Masks.Char) = Tags.Char
+            let { Tag = tag; Mask = mask} = TypeInfos.Char
+            (x &&& mask) = tag
 
         let encodeBool (x : bool) =
-            ((if x then 1 else 0) <<< 7) ||| Tags.Bool
+            ((if x then 1 else 0) <<< 7) ||| TypeInfos.Bool.Tag
 
         let isBool (x : int) =
-            (x &&& Masks.Bool) = Tags.Bool
+            let { Tag = tag; Mask = mask} = TypeInfos.Bool
+            (x &&& mask) = tag
 
         let encodeNull =
-            Tags.Null
+            TypeInfos.Null.Tag
 
         let isNull (x : int) =
-            x = Tags.Null
+            x = TypeInfos.Null.Tag
 
         let immRep (x : Value) =
             match x with
