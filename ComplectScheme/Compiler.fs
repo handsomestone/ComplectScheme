@@ -16,6 +16,7 @@ module Compiler =
         | Int of int
         | Char of char
         | Bool of bool
+        | Null
 
     type Op =
         | Add1
@@ -24,30 +25,35 @@ module Compiler =
     type Expr =
         | Immediate of Value
         | PrimitiveCall of Op * Expr
-        
-    let encodeFixnum (x : int) =
-        let shift = 2
-        let tag = 0b00
-        let mask = 0b11
-        (x <<< shift) ||| tag
 
-    let encodeChar (x : char) =
-        let shift = 8
-        let tag = 0b00001111
-        let mask = 0b11111111
-        (int(x) <<< shift) ||| tag
+    module PrimitiveTypes =
+        let encodeFixnum (x : int) =
+            let shift = 2
+            let tag = 0b00
+            let mask = 0b11
+            (x <<< shift) ||| tag
 
-    let encodeBool (x : bool) =
-        let shift = 7
-        let tag = 0b0011111
-        let mask = 0b1111111
-        ((if x then 1 else 0) <<< shift) ||| tag
+        let encodeChar (x : char) =
+            let shift = 8
+            let tag = 0b00001111
+            let mask = 0b11111111
+            (int(x) <<< shift) ||| tag
 
-    let immRep (x : Value) =
-        match x with
-            | Int(i) -> encodeFixnum i
-            | Char(c) -> encodeChar c
-            | Bool(b) -> encodeBool b
+        let encodeBool (x : bool) =
+            let shift = 7
+            let tag = 0b0011111
+            let mask = 0b1111111
+            ((if x then 1 else 0) <<< shift) ||| tag
+
+        let encodeNull =
+            0b00101111
+
+        let immRep (x : Value) =
+            match x with
+                | Int(i) -> encodeFixnum i
+                | Char(c) -> encodeChar c
+                | Bool(b) -> encodeBool b
+                | Null -> encodeNull
 
     module PrimitiveFunctions =
         let Add(ilGen : ILGenerator) =
@@ -57,22 +63,23 @@ module Compiler =
             ilGen.Emit(OpCodes.Sub_Ovf)
 
     type ILEmitter(ilGen : ILGenerator) =
-        let emitImmediate (ilGen : ILGenerator) (imm : int) =
+        let emitImmediate (ilGen : ILGenerator) (value : Value) =
+            let imm = (PrimitiveTypes.immRep value)
             ilGen.Emit(OpCodes.Ldc_I4, imm)
 
         let emitCall op =
             match op with
                 | Op.Add1 -> 
-                    emitImmediate ilGen (immRep (Value.Int(1)))
+                    emitImmediate ilGen (Value.Int(1))
                     PrimitiveFunctions.Add ilGen
                 | Op.Sub1 -> 
-                    emitImmediate ilGen (immRep (Value.Int(1)))
+                    emitImmediate ilGen (Value.Int(1))
                     PrimitiveFunctions.Sub ilGen
 
         member this.EmitExpr expr =
             let rec emitExpr expr =
                 match expr with
-                    | Immediate(i) -> emitImmediate ilGen (immRep i)
+                    | Immediate(i) -> emitImmediate ilGen i
                     | PrimitiveCall(op, v) ->
                         emitExpr v
                         emitCall op

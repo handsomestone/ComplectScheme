@@ -7,17 +7,21 @@ open ComplectScheme
 
 open Compiler
 
-[<TestClass>]
-type Expressions() = 
+module CompilerWrapper = 
     let (asmInfo : AssemblyInfo) = { AssemblyName = "complect"; EntryPointName = "Main"; MainClassName = "MainClass"; ExecutableName = "program.exe" }
-    
+
     let generateMain expr (ilGen : ILGenerator) =
         let emitter = new ILEmitter(ilGen)
         emitter.EmitExpr expr
         ilGen.Emit(OpCodes.Ret)
     
-    let compile expr =
+    let compile(expr) =
         Compiler.compile asmInfo asmInfo.ExecutableName (generateMain expr)
+    
+open CompilerWrapper
+
+[<TestClass>]
+type PrimitiveTypes() = 
 
     [<TestMethod>]
     member this.``Int immediate value``() =
@@ -42,6 +46,17 @@ type Expressions() =
         let ret = Compiler.drive mainType [| Array.empty<string> |]
 
         ret |> should equal 159  // true = 1; (1 <<< 7) ||| 0b0011111 =  159 
+
+    [<TestMethod>]
+    member this.``Null immediate value``() =
+        let expr = Expr.Immediate(Value.Null)
+        let mainType = compile expr
+        let ret = Compiler.drive mainType [| Array.empty<string> |]
+
+        ret |> should equal 47  // 0b00101111 = 47
+
+[<TestClass>]
+type PrimitiveOperations() =
 
     [<TestMethod>]
     member this.``Add1``() =
