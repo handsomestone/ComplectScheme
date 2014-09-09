@@ -39,7 +39,7 @@ module Compiler =
         let encodeInt (x : int) =
             (x <<< 2) ||| TypeInfos.Int.Tag
 
-        let (|Int|_|) x =
+        let (|IsInt|_|) x =
             let { Tag = tag; Mask = mask} = TypeInfos.Int
             if (x &&& mask) = tag then Some(Value.Int(x >>> 2))
             else None
@@ -47,7 +47,7 @@ module Compiler =
         let encodeChar (x : char) =
             (int(x) <<< 8) ||| TypeInfos.Char.Tag
 
-        let (|Char|_|) x =
+        let (|IsChar|_|) x =
             let { Tag = tag; Mask = mask} = TypeInfos.Char
             if (x &&& mask) = tag then Some(Value.Char(char((x >>> 8) &&& 0xff)))
             else None
@@ -55,7 +55,7 @@ module Compiler =
         let encodeBool (x : bool) =
             ((if x then 1 else 0) <<< 7) ||| TypeInfos.Bool.Tag
 
-        let (|Bool|_|) x =
+        let (|IsBool|_|) x =
             let { Tag = tag; Mask = mask} = TypeInfos.Bool
             if (x &&& mask) = tag then Some(Value.Bool(((x >>> 8) &&& 0b1) = 0b1))
             else None
@@ -63,7 +63,7 @@ module Compiler =
         let encodeNull =
             TypeInfos.Null.Tag
 
-        let (|Null|_|) x =
+        let (|IsNull|_|) x =
             let { Tag = tag; Mask = mask} = TypeInfos.Null
             if (x &&& mask) = tag then Some(Value.Null)
             else None
@@ -76,11 +76,11 @@ module Compiler =
                 | Value.Null -> encodeNull
 
         let decodeValue (x : int) =
-            match x with  // active patterns, not Value union cases
-                | Int i -> i
-                | Char c -> c
-                | Bool b -> b
-                | Null n -> n
+            match x with 
+                | IsInt i -> i
+                | IsChar c -> c
+                | IsBool b -> b
+                | IsNull n -> n
                 | _ -> failwith "Unknown type"
 
         let convertRawToInt (ilGen : ILGenerator) =
