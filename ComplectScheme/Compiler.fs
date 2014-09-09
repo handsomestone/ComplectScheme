@@ -28,26 +28,40 @@ module Compiler =
         | PrimitiveCall of Op * Expr
 
     module PrimitiveTypes =
+        module Tags =
+            let Fixnum = 0b0000
+            let Char = 0b00001111
+            let Bool = 0b00011111
+            let Null = 0b00101111
+
+        module Masks =
+            let Fixnum = 0b0011
+            let Char = 0b11111111
+            let Bool = 0b01111111
+
         let encodeFixnum (x : int) =
-            let shift = 2
-            let tag = 0b0000
-            let mask = 0b0011
-            (x <<< shift) ||| tag
+            (x <<< 2) ||| Tags.Fixnum
+
+        let isFixnum (x : int) =
+            (x &&& Masks.Fixnum) = Tags.Fixnum
 
         let encodeChar (x : char) =
-            let shift = 8
-            let tag = 0b00001111
-            let mask = 0b11111111
-            (int(x) <<< shift) ||| tag
+            (int(x) <<< 8) ||| Tags.Char
+
+        let isChar (x : int) =
+            (x &&& Masks.Char) = Tags.Char
 
         let encodeBool (x : bool) =
-            let shift = 7
-            let tag = 0b00011111
-            let mask = 0b01111111
-            ((if x then 1 else 0) <<< shift) ||| tag
+            ((if x then 1 else 0) <<< 7) ||| Tags.Bool
+
+        let isBool (x : int) =
+            (x &&& Masks.Bool) = Tags.Bool
 
         let encodeNull =
-            0b00101111
+            Tags.Null
+
+        let isNull (x : int) =
+            x = Tags.Null
 
         let immRep (x : Value) =
             match x with
