@@ -56,7 +56,7 @@ type PrimitiveTypes() =
         ret |> should equal (PrimitiveTypes.encodeValue (Value.Null))
 
 [<TestClass>]
-type PrimitiveOperations() =
+type UnaryOperations() =
 
     [<TestMethod>]
     member this.``Add1``() =
