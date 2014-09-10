@@ -18,6 +18,12 @@ module Compiler =
         | Bool of bool
         | Null
 
+    type Identifier =
+        | Variable of string
+
+    type StorageLoc =
+        | LocalStorage of int
+
     type UnaryOp =
         | Add1
         | Sub1
@@ -30,8 +36,18 @@ module Compiler =
 
     type Expr =
         | Immediate of Value
+        | VariableRef of Identifier
         | UnaryOperation of UnaryOp * Expr
         | BinaryOperation of BinaryOp * Expr * Expr
+
+    type Env(env : Env option) =
+        let map = new Map<Identifier, StorageLoc>(Seq.empty)
+
+        member this.FindIdentifier id =
+            match (map |> Map.tryFind id), env with
+                | Some stg, _-> Some stg
+                | None, Some e -> e.FindIdentifier id
+                | None, None -> None
 
     module PrimitiveTypes =
         type TypeInfo = { Tag : int; Mask : int }
@@ -117,24 +133,24 @@ module Compiler =
             ilGen.Emit(OpCodes.Ceq)
 
     type ILEmitter(ilGen : ILGenerator) =
-        let emitImmediate (ilGen : ILGenerator) (value : Value) =
+        let emitImmediate (value : Value) =
             let imm = (PrimitiveTypes.encodeValue value)
             ilGen.Emit(OpCodes.Ldc_I4, imm)
 
         let emitUnaryOp op =
             match op with
                 | UnaryOp.Add1 -> 
-                    emitImmediate ilGen (Value.Int(1))
+                    emitImmediate (Value.Int(1))
                     PrimitiveOperations.Add ilGen
                 | UnaryOp.Sub1 -> 
-                    emitImmediate ilGen (Value.Int(1))
+                    emitImmediate (Value.Int(1))
                     PrimitiveOperations.Sub ilGen
                 | UnaryOp.IsZero ->
-                    emitImmediate ilGen (Value.Int(0))
+                    emitImmediate (Value.Int(0))
                     PrimitiveOperations.CompareEq ilGen
                     PrimitiveTypes.convertRawToBool ilGen
                 | UnaryOp.IsNull ->
-                    emitImmediate ilGen (Value.Null)
+                    emitImmediate (Value.Null)
                     PrimitiveOperations.CompareEq ilGen
                     PrimitiveTypes.convertRawToBool ilGen
 
@@ -145,18 +161,36 @@ module Compiler =
                 | BinaryOp.Sub ->
                     PrimitiveOperations.Sub ilGen
 
-        member this.EmitExpr expr =
-            let rec emitExpr expr =
+        let getIdentifierName id =
+            match id with
+                | Variable name -> name
+
+        // TODO
+        let emitLocalVarRef (ref : int) =
+            //let localBuilder = ilGen.DeclareLocal(typeof<int>)
+            ilGen.Emit(OpCodes.Ldloc, ref)
+
+        let emitVariableRef ref (env : Env) =
+            match env.FindIdentifier ref with
+                | Some stg -> 
+                    match stg with
+                        | LocalStorage local -> emitLocalVarRef local
+                | None -> failwithf "Unable to find binding for identifier %s" (getIdentifierName ref)
+            
+        member this.EmitExpr expr env =
+            let rec emitExpr expr env =
                 match expr with
-                    | Immediate(i) -> emitImmediate ilGen i
+                    | Immediate(i) -> emitImmediate i
                     | UnaryOperation(op, e) ->
-                        emitExpr e
+                        emitExpr e env
                         emitUnaryOp op
                     | BinaryOperation(op, e1, e2) ->
-                        emitExpr e1
-                        emitExpr e2
+                        emitExpr e1 env
+                        emitExpr e2 env
                         emitBinaryOp op
-            emitExpr expr
+                    | VariableRef (ref) ->
+                        emitVariableRef ref env
+            emitExpr expr env
 
     let compile asmInfo outFile generateIL =
         let domain = AppDomain.CurrentDomain
