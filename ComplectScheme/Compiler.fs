@@ -18,15 +18,19 @@ module Compiler =
         | Bool of bool
         | Null
 
-    type Op =
+    type UnaryOp =
         | Add1
         | Sub1
         | IsZero
         | IsNull
 
+    type BinaryOp =
+        | Add
+
     type Expr =
         | Immediate of Value
-        | UnaryOperation of Op * Expr
+        | UnaryOperation of UnaryOp * Expr
+        | BinaryOperation of BinaryOp * Expr * Expr
 
     module PrimitiveTypes =
         type TypeInfo = { Tag : int; Mask : int }
@@ -116,30 +120,39 @@ module Compiler =
             let imm = (PrimitiveTypes.encodeValue value)
             ilGen.Emit(OpCodes.Ldc_I4, imm)
 
-        let emitCall op =
+        let emitUnaryOp op =
             match op with
-                | Op.Add1 -> 
+                | UnaryOp.Add1 -> 
                     emitImmediate ilGen (Value.Int(1))
                     PrimitiveOperations.Add ilGen
-                | Op.Sub1 -> 
+                | UnaryOp.Sub1 -> 
                     emitImmediate ilGen (Value.Int(1))
                     PrimitiveOperations.Sub ilGen
-                | Op.IsZero ->
+                | UnaryOp.IsZero ->
                     emitImmediate ilGen (Value.Int(0))
                     PrimitiveOperations.CompareEq ilGen
                     PrimitiveTypes.convertRawToBool ilGen
-                | Op.IsNull ->
+                | UnaryOp.IsNull ->
                     emitImmediate ilGen (Value.Null)
                     PrimitiveOperations.CompareEq ilGen
                     PrimitiveTypes.convertRawToBool ilGen
+
+        let emitBinaryOp op =
+            match op with
+                | BinaryOp.Add ->
+                    PrimitiveOperations.Add ilGen
 
         member this.EmitExpr expr =
             let rec emitExpr expr =
                 match expr with
                     | Immediate(i) -> emitImmediate ilGen i
-                    | UnaryOperation(op, v) ->
-                        emitExpr v
-                        emitCall op
+                    | UnaryOperation(op, e) ->
+                        emitExpr e
+                        emitUnaryOp op
+                    | BinaryOperation(op, e1, e2) ->
+                        emitExpr e1
+                        emitExpr e2
+                        emitBinaryOp op
             emitExpr expr
 
     let compile asmInfo outFile generateIL =
