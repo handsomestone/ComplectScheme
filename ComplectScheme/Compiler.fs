@@ -26,6 +26,7 @@ module Compiler =
 
     type BinaryOp =
         | Add
+        | Sub
 
     type Expr =
         | Immediate of Value
@@ -141,6 +142,8 @@ module Compiler =
             match op with
                 | BinaryOp.Add ->
                     PrimitiveOperations.Add ilGen
+                | BinaryOp.Sub ->
+                    PrimitiveOperations.Sub ilGen
 
         member this.EmitExpr expr =
             let rec emitExpr expr =

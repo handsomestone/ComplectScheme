@@ -95,3 +95,10 @@ type BinaryOperations() =
         let ret = compileAndRun expr
 
         ret |> should equal (PrimitiveTypes.encodeInt 5)
+
+    [<TestMethod>]
+    member this.``Sub with positive integers``() =
+        let expr = Expr.BinaryOperation(BinaryOp.Sub, Expr.Immediate(Value.Int(5)), Expr.Immediate(Value.Int(2)))
+        let ret = compileAndRun expr
+
+        ret |> should equal (PrimitiveTypes.encodeInt 3)
