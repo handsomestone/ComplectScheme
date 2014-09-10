@@ -102,3 +102,16 @@ type BinaryOperations() =
         let ret = compileAndRun expr
 
         ret |> should equal (PrimitiveTypes.encodeInt 3)
+
+[<TestClass>]
+type CompositeExpressions() =
+    
+    [<TestMethod>]
+    member this.``Sub followed by IsZero``() =
+        let expr = 
+            Expr.UnaryOperation(
+                UnaryOp.IsZero, 
+                Expr.BinaryOperation(BinaryOp.Sub, Expr.Immediate(Value.Int(5)), Expr.Immediate(Value.Int(5))))
+        let ret = compileAndRun expr
+
+        ret |> should equal (PrimitiveTypes.encodeBool true)
