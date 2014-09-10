@@ -60,28 +60,28 @@ type PrimitiveOperations() =
 
     [<TestMethod>]
     member this.``Add1``() =
-        let expr = Expr.PrimitiveCall(Op.Add1, Expr.Immediate(Value.Int(5)))
+        let expr = Expr.UnaryOperation(Op.Add1, Expr.Immediate(Value.Int(5)))
         let ret = compileAndRun expr
 
         ret |> should equal (PrimitiveTypes.encodeInt 6)
 
     [<TestMethod>]
     member this.``Sub1``() =
-        let expr = Expr.PrimitiveCall(Op.Sub1, Expr.Immediate(Value.Int(5)))
+        let expr = Expr.UnaryOperation(Op.Sub1, Expr.Immediate(Value.Int(5)))
         let ret = compileAndRun expr
 
         ret |> should equal (PrimitiveTypes.encodeInt 4)
 
     [<TestMethod>]
     member this.``IsZero on 0 is true``() =
-        let expr = Expr.PrimitiveCall(Op.IsZero, Expr.Immediate(Value.Int(0)))
+        let expr = Expr.UnaryOperation(Op.IsZero, Expr.Immediate(Value.Int(0)))
         let ret = compileAndRun expr
 
         ret |> should equal (PrimitiveTypes.encodeBool true)
 
     [<TestMethod>]
     member this.``IsNull on null is true``() =
-        let expr = Expr.PrimitiveCall(Op.IsNull, Expr.Immediate(Value.Null))
+        let expr = Expr.UnaryOperation(Op.IsNull, Expr.Immediate(Value.Null))
         let ret = compileAndRun expr
 
         ret |> should equal (PrimitiveTypes.encodeBool true)

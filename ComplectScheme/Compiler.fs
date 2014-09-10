@@ -26,7 +26,7 @@ module Compiler =
 
     type Expr =
         | Immediate of Value
-        | PrimitiveCall of Op * Expr
+        | UnaryOperation of Op * Expr
 
     module PrimitiveTypes =
         type TypeInfo = { Tag : int; Mask : int }
@@ -137,7 +137,7 @@ module Compiler =
             let rec emitExpr expr =
                 match expr with
                     | Immediate(i) -> emitImmediate ilGen i
-                    | PrimitiveCall(op, v) ->
+                    | UnaryOperation(op, v) ->
                         emitExpr v
                         emitCall op
             emitExpr expr
