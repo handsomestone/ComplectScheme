@@ -12,7 +12,7 @@ module CompilerWrapper =
 
     let generateMain expr (ilGen : ILGenerator) =
         let emitter = new ILEmitter(ilGen)
-        let env = new Env(None)
+        let env = new Env(None, None)
         emitter.EmitExpr expr env
         ilGen.Emit(OpCodes.Ret)
     

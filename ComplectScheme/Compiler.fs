@@ -24,6 +24,10 @@ module Compiler =
     type StorageLoc =
         | LocalStorage of int
 
+    type Binding = Identifier * Value
+
+    type BindingRef = Identifier * StorageLoc
+
     type UnaryOp =
         | Add1
         | Sub1
@@ -39,9 +43,10 @@ module Compiler =
         | VariableRef of Identifier
         | UnaryOperation of UnaryOp * Expr
         | BinaryOperation of BinaryOp * Expr * Expr
+        | LetBinding of Binding list * Expr
 
-    type Env(env : Env option) =
-        let map = new Map<Identifier, StorageLoc>(Seq.empty)
+    type Env(env : Env option, bindings : BindingRef list option) =
+        let map = new Map<Identifier, StorageLoc>(match bindings with Some(b) -> (Seq.ofList b) | None -> Seq.empty)
 
         member this.FindIdentifier id =
             match (map |> Map.tryFind id), env with
@@ -122,6 +127,9 @@ module Compiler =
             ilGen.Emit(OpCodes.Ldc_I4, TypeInfos.Bool.Tag)
             ilGen.Emit(OpCodes.Or)
 
+        let getNativeTypeForValue value =
+            typeof<int>  // only ints for now, maybe objects later (e.g. functions, etc.)
+
     module PrimitiveOperations =
         let Add (ilGen : ILGenerator) =
             ilGen.Emit(OpCodes.Add_Ovf)
@@ -167,7 +175,6 @@ module Compiler =
 
         // TODO
         let emitLocalVarRef (ref : int) =
-            //let localBuilder = ilGen.DeclareLocal(typeof<int>)
             ilGen.Emit(OpCodes.Ldloc, ref)
 
         let emitVariableRef ref (env : Env) =
@@ -177,6 +184,14 @@ module Compiler =
                         | LocalStorage local -> emitLocalVarRef local
                 | None -> failwithf "Unable to find binding for identifier %s" (getIdentifierName ref)
             
+        let createLocalStorageForBindings (bindings : Binding list) =
+            bindings |> List.map (fun (id, value) ->
+                let nativeType = PrimitiveTypes.getNativeTypeForValue value
+                let localBuilder = ilGen.DeclareLocal(nativeType)  // side-effect
+                let stgLoc = LocalStorage(localBuilder.LocalIndex)
+                (id, stgLoc)
+                )
+
         member this.EmitExpr expr env =
             let rec emitExpr expr env =
                 match expr with
@@ -188,8 +203,11 @@ module Compiler =
                         emitExpr e1 env
                         emitExpr e2 env
                         emitBinaryOp op
-                    | VariableRef (ref) ->
+                    | VariableRef(ref) ->
                         emitVariableRef ref env
+                    | LetBinding(bindings, e) ->
+                        let bindingRefs = createLocalStorageForBindings bindings
+                        emitExpr e (new Env(Some(env), Some(bindingRefs)))
             emitExpr expr env
 
     let compile asmInfo outFile generateIL =
@@ -219,9 +237,10 @@ module Compiler =
 
     let generateMain (ilGen : ILGenerator) =
         let emitter = new ILEmitter(ilGen)
-
+        
+        let env = new Env(None, None)
         let expr = Expr.Immediate(Value.Int(23))
-        emitter.EmitExpr(expr)
+        emitter.EmitExpr expr env
 
         ilGen.Emit(OpCodes.Ret)
 
