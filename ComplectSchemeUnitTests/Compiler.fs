@@ -146,3 +146,33 @@ type LetBindings() =
         let ret = compileAndRun expr
 
         ret |> should equal (PrimitiveTypes.encodeInt 15)
+
+    [<TestMethod>]
+    member this.``Nested let bindings``() =
+        let expr = 
+            Expr.LetBinding(
+                [(Identifier.Variable("foo"), Value.Int(5))],
+                Expr.LetBinding(
+                    [(Identifier.Variable("bar"), Value.Int(10))],
+                    Expr.BinaryOperation(
+                        BinaryOp.Add,
+                        Expr.VariableRef(Identifier.Variable("foo")),
+                        Expr.VariableRef(Identifier.Variable("bar")))))
+        let ret = compileAndRun expr
+
+        ret |> should equal (PrimitiveTypes.encodeInt 15)
+
+    [<TestMethod>]
+    member this.``Variable shadowing``() =
+        let expr = 
+            Expr.LetBinding(
+                [(Identifier.Variable("foo"), Value.Int(5))],
+                Expr.LetBinding(
+                    [(Identifier.Variable("foo"), Value.Int(10))],
+                    Expr.BinaryOperation(
+                        BinaryOp.Add,
+                        Expr.VariableRef(Identifier.Variable("foo")),
+                        Expr.Immediate(Value.Int(1)))))
+        let ret = compileAndRun expr
+
+        ret |> should equal (PrimitiveTypes.encodeInt 11)
