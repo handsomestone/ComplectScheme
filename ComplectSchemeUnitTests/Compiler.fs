@@ -116,3 +116,19 @@ type CompositeExpressions() =
         let ret = compileAndRun expr
 
         ret |> should equal (PrimitiveTypes.encodeBool true)
+
+[<TestClass>]
+type LocalVariables() =
+
+    [<TestMethod>]
+    member this.``Let binding and variable ref``() =
+        let expr =
+            Expr.LetBinding(
+                [(Identifier.Variable("foo"), Value.Int(5))],
+                Expr.BinaryOperation(
+                    BinaryOp.Add,
+                    Expr.Immediate(Value.Int(10)),
+                    Expr.VariableRef(Identifier.Variable("foo"))))
+        let ret = compileAndRun expr
+
+        ret |> should equal (PrimitiveTypes.encodeInt 15)

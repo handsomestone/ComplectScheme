@@ -141,24 +141,24 @@ module Compiler =
             ilGen.Emit(OpCodes.Ceq)
 
     type ILEmitter(ilGen : ILGenerator) =
-        let emitImmediate (value : Value) =
+        let emitValue (value : Value) =
             let imm = (PrimitiveTypes.encodeValue value)
             ilGen.Emit(OpCodes.Ldc_I4, imm)
 
         let emitUnaryOp op =
             match op with
                 | UnaryOp.Add1 -> 
-                    emitImmediate (Value.Int(1))
+                    emitValue (Value.Int(1))
                     PrimitiveOperations.Add ilGen
                 | UnaryOp.Sub1 -> 
-                    emitImmediate (Value.Int(1))
+                    emitValue (Value.Int(1))
                     PrimitiveOperations.Sub ilGen
                 | UnaryOp.IsZero ->
-                    emitImmediate (Value.Int(0))
+                    emitValue (Value.Int(0))
                     PrimitiveOperations.CompareEq ilGen
                     PrimitiveTypes.convertRawToBool ilGen
                 | UnaryOp.IsNull ->
-                    emitImmediate (Value.Null)
+                    emitValue (Value.Null)
                     PrimitiveOperations.CompareEq ilGen
                     PrimitiveTypes.convertRawToBool ilGen
 
@@ -173,29 +173,33 @@ module Compiler =
             match id with
                 | Variable name -> name
 
-        // TODO
-        let emitLocalVarRef (ref : int) =
+        let emitLocalVariableRef (ref : int) =
             ilGen.Emit(OpCodes.Ldloc, ref)
 
         let emitVariableRef ref (env : Env) =
             match env.FindIdentifier ref with
                 | Some stg -> 
                     match stg with
-                        | LocalStorage local -> emitLocalVarRef local
+                        | LocalStorage local -> emitLocalVariableRef local
                 | None -> failwithf "Unable to find binding for identifier %s" (getIdentifierName ref)
             
-        let createLocalStorageForBindings (bindings : Binding list) =
-            bindings |> List.map (fun (id, value) ->
-                let nativeType = PrimitiveTypes.getNativeTypeForValue value
-                let localBuilder = ilGen.DeclareLocal(nativeType)  // side-effect
-                let stgLoc = LocalStorage(localBuilder.LocalIndex)
-                (id, stgLoc)
-                )
+        let storeLocalVariable (binding : Binding) : BindingRef =
+            let (id, value) = binding
+            let nativeType = PrimitiveTypes.getNativeTypeForValue value
+            let localBuilder = ilGen.DeclareLocal(nativeType)
+
+            match id with
+                | Variable(name) -> localBuilder.SetLocalSymInfo(name)
+
+            let stgLoc = LocalStorage(localBuilder.LocalIndex)
+            emitValue value
+            ilGen.Emit(OpCodes.Stloc, localBuilder)
+            (id, stgLoc)
 
         member this.EmitExpr expr env =
             let rec emitExpr expr env =
                 match expr with
-                    | Immediate(i) -> emitImmediate i
+                    | Immediate(i) -> emitValue i
                     | UnaryOperation(op, e) ->
                         emitExpr e env
                         emitUnaryOp op
@@ -206,7 +210,7 @@ module Compiler =
                     | VariableRef(ref) ->
                         emitVariableRef ref env
                     | LetBinding(bindings, e) ->
-                        let bindingRefs = createLocalStorageForBindings bindings
+                        let bindingRefs = bindings |> List.map (fun binding -> storeLocalVariable binding)
                         emitExpr e (new Env(Some(env), Some(bindingRefs)))
             emitExpr expr env
 
@@ -239,7 +243,13 @@ module Compiler =
         let emitter = new ILEmitter(ilGen)
         
         let env = new Env(None, None)
-        let expr = Expr.Immediate(Value.Int(23))
+        let expr =
+            Expr.LetBinding(
+                [(Identifier.Variable("foo"), Value.Int(5))],
+                Expr.BinaryOperation(
+                    BinaryOp.Add,
+                    Expr.Immediate(Value.Int(10)),
+                    Expr.VariableRef(Identifier.Variable("foo"))))
         emitter.EmitExpr expr env
 
         ilGen.Emit(OpCodes.Ret)
