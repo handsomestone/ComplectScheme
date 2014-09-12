@@ -24,8 +24,6 @@ module Compiler =
     type StorageLoc =
         | LocalStorage of int
 
-    type Binding = Identifier * Value
-
     type BindingRef = Identifier * StorageLoc
 
     type UnaryOp =
@@ -44,6 +42,7 @@ module Compiler =
         | UnaryOperation of UnaryOp * Expr
         | BinaryOperation of BinaryOp * Expr * Expr
         | LetBinding of Binding list * Expr
+    and Binding = Identifier * Expr
 
     type Env(env : Env option, bindings : BindingRef list option) =
         let map = new Map<Identifier, StorageLoc>(match bindings with Some(b) -> (Seq.ofList b) | None -> Seq.empty)
@@ -184,18 +183,16 @@ module Compiler =
                 | None -> failwithf "Unable to find binding for identifier %s" (getIdentifierName ref)
             
         let storeLocalVariable (binding : Binding) : BindingRef =
-            let (id, value) = binding
-            let nativeType = PrimitiveTypes.getNativeTypeForValue value
-            let localBuilder = ilGen.DeclareLocal(nativeType)
+            let (id, expr) = binding
+            let localBuilder = ilGen.DeclareLocal(typeof<int>)
 
             match id with
                 | Variable(name) -> localBuilder.SetLocalSymInfo(name)
 
             let stgLoc = LocalStorage(localBuilder.LocalIndex)
-            emitValue value
             ilGen.Emit(OpCodes.Stloc, localBuilder)
             (id, stgLoc)
-
+            
         member this.EmitExpr expr env =
             let rec emitExpr expr env =
                 match expr with
@@ -210,7 +207,13 @@ module Compiler =
                     | VariableRef(ref) ->
                         emitVariableRef ref env
                     | LetBinding(bindings, e) ->
-                        let bindingRefs = bindings |> List.map (fun binding -> storeLocalVariable binding)
+                        let bindingRefs = 
+                            bindings 
+                            |> List.map (fun binding -> 
+                                let (_, expr) = binding
+                                emitExpr expr env
+                                storeLocalVariable binding
+                                )
                         emitExpr e (new Env(Some(env), Some(bindingRefs)))
             emitExpr expr env
 
@@ -245,7 +248,7 @@ module Compiler =
         let env = new Env(None, None)
         let expr =
             Expr.LetBinding(
-                [(Identifier.Variable("foo"), Value.Int(5))],
+                [(Identifier.Variable("foo"), Expr.Immediate(Value.Int(5)))],
                 Expr.BinaryOperation(
                     BinaryOp.Add,
                     Expr.Immediate(Value.Int(10)),

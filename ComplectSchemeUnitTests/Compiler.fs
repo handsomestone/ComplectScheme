@@ -124,7 +124,7 @@ type LetBindings() =
     member this.``Let binding and variable ref``() =
         let expr =
             Expr.LetBinding(
-                [(Identifier.Variable("foo"), Value.Int(5))],
+                [(Identifier.Variable("foo"), Expr.Immediate(Value.Int(5)))],
                 Expr.BinaryOperation(
                     BinaryOp.Add,
                     Expr.Immediate(Value.Int(10)),
@@ -137,8 +137,8 @@ type LetBindings() =
     member this.``Multiple bindings in one let``() =
         let expr = 
             Expr.LetBinding(
-                [(Identifier.Variable("foo"), Value.Int(5));
-                 (Identifier.Variable("bar"), Value.Int(10))],
+                [(Identifier.Variable("foo"), Expr.Immediate(Value.Int(5)));
+                 (Identifier.Variable("bar"), Expr.Immediate(Value.Int(10)))],
                 Expr.BinaryOperation(
                     BinaryOp.Add,
                     Expr.VariableRef(Identifier.Variable("foo")),
@@ -151,9 +151,9 @@ type LetBindings() =
     member this.``Nested let bindings``() =
         let expr = 
             Expr.LetBinding(
-                [(Identifier.Variable("foo"), Value.Int(5))],
+                [(Identifier.Variable("foo"), Expr.Immediate(Value.Int(5)))],
                 Expr.LetBinding(
-                    [(Identifier.Variable("bar"), Value.Int(10))],
+                    [(Identifier.Variable("bar"), Expr.Immediate(Value.Int(10)))],
                     Expr.BinaryOperation(
                         BinaryOp.Add,
                         Expr.VariableRef(Identifier.Variable("foo")),
@@ -166,9 +166,9 @@ type LetBindings() =
     member this.``Variable shadowing``() =
         let expr = 
             Expr.LetBinding(
-                [(Identifier.Variable("foo"), Value.Int(5))],
+                [(Identifier.Variable("foo"), Expr.Immediate(Value.Int(5)))],
                 Expr.LetBinding(
-                    [(Identifier.Variable("foo"), Value.Int(10))],
+                    [(Identifier.Variable("foo"), Expr.Immediate(Value.Int(10)))],
                     Expr.BinaryOperation(
                         BinaryOp.Add,
                         Expr.VariableRef(Identifier.Variable("foo")),
