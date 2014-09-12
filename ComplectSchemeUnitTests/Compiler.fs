@@ -124,11 +124,11 @@ type LetBindings() =
     member this.``Let binding and variable ref``() =
         let expr =
             Expr.LetBinding(
-                [(Identifier.Variable("foo"), Expr.Immediate(Value.Int(5)))],
+                [("foo", Expr.Immediate(Value.Int(5)))],
                 Expr.BinaryOperation(
                     BinaryOp.Add,
                     Expr.Immediate(Value.Int(10)),
-                    Expr.VariableRef(Identifier.Variable("foo"))))
+                    Expr.VariableRef("foo")))
         let ret = compileAndRun expr
 
         ret |> should equal (PrimitiveTypes.encodeInt 15)
@@ -137,12 +137,12 @@ type LetBindings() =
     member this.``Multiple bindings in one let``() =
         let expr = 
             Expr.LetBinding(
-                [(Identifier.Variable("foo"), Expr.Immediate(Value.Int(5)));
-                 (Identifier.Variable("bar"), Expr.Immediate(Value.Int(10)))],
+                [("foo", Expr.Immediate(Value.Int(5)));
+                 ("bar", Expr.Immediate(Value.Int(10)))],
                 Expr.BinaryOperation(
                     BinaryOp.Add,
-                    Expr.VariableRef(Identifier.Variable("foo")),
-                    Expr.VariableRef(Identifier.Variable("bar"))))
+                    Expr.VariableRef("foo"),
+                    Expr.VariableRef("bar")))
         let ret = compileAndRun expr
 
         ret |> should equal (PrimitiveTypes.encodeInt 15)
@@ -151,13 +151,13 @@ type LetBindings() =
     member this.``Nested let bindings``() =
         let expr = 
             Expr.LetBinding(
-                [(Identifier.Variable("foo"), Expr.Immediate(Value.Int(5)))],
+                [("foo", Expr.Immediate(Value.Int(5)))],
                 Expr.LetBinding(
-                    [(Identifier.Variable("bar"), Expr.Immediate(Value.Int(10)))],
+                    [("bar", Expr.Immediate(Value.Int(10)))],
                     Expr.BinaryOperation(
                         BinaryOp.Add,
-                        Expr.VariableRef(Identifier.Variable("foo")),
-                        Expr.VariableRef(Identifier.Variable("bar")))))
+                        Expr.VariableRef("foo"),
+                        Expr.VariableRef("bar"))))
         let ret = compileAndRun expr
 
         ret |> should equal (PrimitiveTypes.encodeInt 15)
@@ -166,12 +166,12 @@ type LetBindings() =
     member this.``Variable shadowing``() =
         let expr = 
             Expr.LetBinding(
-                [(Identifier.Variable("foo"), Expr.Immediate(Value.Int(5)))],
+                [("foo", Expr.Immediate(Value.Int(5)))],
                 Expr.LetBinding(
-                    [(Identifier.Variable("foo"), Expr.Immediate(Value.Int(10)))],
+                    [("foo", Expr.Immediate(Value.Int(10)))],
                     Expr.BinaryOperation(
                         BinaryOp.Add,
-                        Expr.VariableRef(Identifier.Variable("foo")),
+                        Expr.VariableRef("foo"),
                         Expr.Immediate(Value.Int(1)))))
         let ret = compileAndRun expr
 
@@ -181,10 +181,10 @@ type LetBindings() =
     member this.``Expression in let binding``() =
         let expr = 
             Expr.LetBinding(
-                [(Identifier.Variable("foo"), Expr.UnaryOperation(UnaryOp.Add1, Expr.Immediate(Value.Int(5))))],
+                [("foo", Expr.UnaryOperation(UnaryOp.Add1, Expr.Immediate(Value.Int(5))))],
                 Expr.BinaryOperation(
                     BinaryOp.Add,
-                    Expr.VariableRef(Identifier.Variable("foo")),
+                    Expr.VariableRef("foo"),
                     Expr.Immediate(Value.Int(10))))
         let ret = compileAndRun expr
 
@@ -194,10 +194,35 @@ type LetBindings() =
     member this.``Reference to unknown variable``() =
         let expr = 
             Expr.LetBinding(
-                [(Identifier.Variable("foo"), Expr.UnaryOperation(UnaryOp.Add1, Expr.Immediate(Value.Int(5))))],
+                [("foo", Expr.UnaryOperation(UnaryOp.Add1, Expr.Immediate(Value.Int(5))))],
                 Expr.BinaryOperation(
                     BinaryOp.Add,
-                    Expr.VariableRef(Identifier.Variable("bar")),
+                    Expr.VariableRef("bar"),
                     Expr.Immediate(Value.Int(10))))
         
         should throw typeof<System.Exception> (fun () -> compileAndRun expr |> ignore)
+
+[<TestClass>]
+type Conditionals() =
+
+    [<TestMethod>]
+    member this.``If then else with true condition``() =
+        let expr =
+            Expr.Conditional(
+                Expr.UnaryOperation(UnaryOp.IsZero, Expr.Immediate(Value.Int(0))),
+                Expr.Immediate(Value.Bool(true)),
+                Expr.Immediate(Value.Bool(false)))
+        let ret = compileAndRun expr
+
+        ret |> should equal (PrimitiveTypes.encodeBool(true))
+
+    [<TestMethod>]
+    member this.``If then else with false condition``() =
+        let expr =
+            Expr.Conditional(
+                Expr.UnaryOperation(UnaryOp.IsZero, Expr.Immediate(Value.Int(1))),
+                Expr.Immediate(Value.Bool(true)),
+                Expr.Immediate(Value.Bool(false)))
+        let ret = compileAndRun expr
+
+        ret |> should equal (PrimitiveTypes.encodeBool(false))

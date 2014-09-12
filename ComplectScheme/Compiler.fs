@@ -18,8 +18,7 @@ module Compiler =
         | Bool of bool
         | Null
 
-    type Identifier =
-        | Variable of string
+    type Identifier = string
 
     type StorageLoc =
         | LocalStorage of int
@@ -42,6 +41,7 @@ module Compiler =
         | UnaryOperation of UnaryOp * Expr
         | BinaryOperation of BinaryOp * Expr * Expr
         | LetBinding of Binding list * Expr
+        | Conditional of Expr * Expr * Expr
     and Binding = Identifier * Expr
 
     type Env(env : Env option, bindings : BindingRef list option) =
@@ -168,10 +168,6 @@ module Compiler =
                 | BinaryOp.Sub ->
                     PrimitiveOperations.Sub ilGen
 
-        let getIdentifierName id =
-            match id with
-                | Variable name -> name
-
         let emitLocalVariableRef (ref : int) =
             ilGen.Emit(OpCodes.Ldloc, ref)
 
@@ -180,15 +176,12 @@ module Compiler =
                 | Some stg -> 
                     match stg with
                         | LocalStorage local -> emitLocalVariableRef local
-                | None -> failwithf "Unable to find binding for identifier %s" (getIdentifierName ref)
+                | None -> failwithf "Unable to find binding for identifier %s" ref
             
         let storeLocalVariable (binding : Binding) : BindingRef =
             let (id, expr) = binding
             let localBuilder = ilGen.DeclareLocal(typeof<int>)
-
-            match id with
-                | Variable(name) -> localBuilder.SetLocalSymInfo(name)
-
+            localBuilder.SetLocalSymInfo(id)
             let stgLoc = LocalStorage(localBuilder.LocalIndex)
             ilGen.Emit(OpCodes.Stloc, localBuilder)
             (id, stgLoc)
@@ -215,6 +208,17 @@ module Compiler =
                                 storeLocalVariable binding
                                 )
                         emitExpr e (new Env(Some(env), Some(bindingRefs)))
+                    | Conditional (test, e1, e2) ->
+                        let l0 = ilGen.DefineLabel()
+                        let l1 = ilGen.DefineLabel()
+                        emitExpr test env
+                        emitValue (Value.Bool(false))
+                        ilGen.Emit(OpCodes.Beq, l0)
+                        emitExpr e1 env
+                        ilGen.Emit(OpCodes.Br, l1)
+                        ilGen.MarkLabel(l0)
+                        emitExpr e2 env
+                        ilGen.MarkLabel(l1)
             emitExpr expr env
 
     let compile asmInfo outFile generateIL =
@@ -248,11 +252,11 @@ module Compiler =
         let env = new Env(None, None)
         let expr =
             Expr.LetBinding(
-                [(Identifier.Variable("foo"), Expr.Immediate(Value.Int(5)))],
+                [("foo", Expr.Immediate(Value.Int(5)))],
                 Expr.BinaryOperation(
                     BinaryOp.Add,
                     Expr.Immediate(Value.Int(10)),
-                    Expr.VariableRef(Identifier.Variable("foo"))))
+                    Expr.VariableRef("foo")))
         emitter.EmitExpr expr env
 
         ilGen.Emit(OpCodes.Ret)
