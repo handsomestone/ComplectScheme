@@ -176,3 +176,16 @@ type LetBindings() =
         let ret = compileAndRun expr
 
         ret |> should equal (PrimitiveTypes.encodeInt 11)
+
+    [<TestMethod>]
+    member this.``Expression in let binding``() =
+        let expr = 
+            Expr.LetBinding(
+                [(Identifier.Variable("foo"), Expr.UnaryOperation(UnaryOp.Add1, Expr.Immediate(Value.Int(5))))],
+                Expr.BinaryOperation(
+                    BinaryOp.Add,
+                    Expr.VariableRef(Identifier.Variable("foo")),
+                    Expr.Immediate(Value.Int(10))))
+        let ret = compileAndRun expr
+
+        ret |> should equal (PrimitiveTypes.encodeInt 16)
