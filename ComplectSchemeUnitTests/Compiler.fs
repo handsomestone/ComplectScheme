@@ -189,3 +189,15 @@ type LetBindings() =
         let ret = compileAndRun expr
 
         ret |> should equal (PrimitiveTypes.encodeInt 16)
+
+    [<TestMethod>]
+    member this.``Reference to unknown variable``() =
+        let expr = 
+            Expr.LetBinding(
+                [(Identifier.Variable("foo"), Expr.UnaryOperation(UnaryOp.Add1, Expr.Immediate(Value.Int(5))))],
+                Expr.BinaryOperation(
+                    BinaryOp.Add,
+                    Expr.VariableRef(Identifier.Variable("bar")),
+                    Expr.Immediate(Value.Int(10))))
+        
+        should throw typeof<System.Exception> (fun () -> compileAndRun expr |> ignore)
