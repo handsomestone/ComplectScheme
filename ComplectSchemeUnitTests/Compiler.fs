@@ -10,7 +10,7 @@ open Compiler
 module CompilerWrapper = 
     let (asmInfo : AssemblyInfo) = { AssemblyName = "complect"; EntryPointName = "Main"; MainClassName = "MainClass"; ExecutableName = "program.exe" }
 
-    let compile expr =
+    let compileExpr expr =
         let mainFunctionInfo = {
             Name = "Main";
             Body = expr;
@@ -24,8 +24,8 @@ module CompilerWrapper =
 
         Compiler.build asmInfo mainTypeInfo
 
-    let compileAndRun expr =
-        let mainType = compile expr
+    let compileAndRunExpr expr =
+        let mainType = compileExpr expr
         Compiler.drive mainType [| |]
     
 open CompilerWrapper
@@ -36,28 +36,28 @@ type PrimitiveTypes() =
     [<TestMethod>]
     member this.``Int immediate value``() =
         let expr = Expr.Immediate(Value.Int(5))
-        let ret = compileAndRun expr
+        let ret = compileAndRunExpr expr
 
         ret |> should equal (PrimitiveTypes.encodeValue (Value.Int(5)))
 
     [<TestMethod>]
     member this.``Char immediate value``() =
         let expr = Expr.Immediate(Value.Char('a'))
-        let ret = compileAndRun expr
+        let ret = compileAndRunExpr expr
 
         ret |> should equal (PrimitiveTypes.encodeValue (Value.Char('a')))
 
     [<TestMethod>]
     member this.``Bool immediate value``() =
         let expr = Expr.Immediate(Value.Bool(true))
-        let ret = compileAndRun expr
+        let ret = compileAndRunExpr expr
 
         ret |> should equal (PrimitiveTypes.encodeValue (Value.Bool(true)))
 
     [<TestMethod>]
     member this.``Null immediate value``() =
         let expr = Expr.Immediate(Value.Null)
-        let ret = compileAndRun expr
+        let ret = compileAndRunExpr expr
 
         ret |> should equal (PrimitiveTypes.encodeValue (Value.Null))
 
@@ -67,28 +67,28 @@ type UnaryOperations() =
     [<TestMethod>]
     member this.``Add1``() =
         let expr = Expr.UnaryOperation(UnaryOp.Add1, Expr.Immediate(Value.Int(5)))
-        let ret = compileAndRun expr
+        let ret = compileAndRunExpr expr
 
         ret |> should equal (PrimitiveTypes.encodeInt 6)
 
     [<TestMethod>]
     member this.``Sub1``() =
         let expr = Expr.UnaryOperation(UnaryOp.Sub1, Expr.Immediate(Value.Int(5)))
-        let ret = compileAndRun expr
+        let ret = compileAndRunExpr expr
 
         ret |> should equal (PrimitiveTypes.encodeInt 4)
 
     [<TestMethod>]
     member this.``IsZero on 0 is true``() =
         let expr = Expr.UnaryOperation(UnaryOp.IsZero, Expr.Immediate(Value.Int(0)))
-        let ret = compileAndRun expr
+        let ret = compileAndRunExpr expr
 
         ret |> should equal (PrimitiveTypes.encodeBool true)
 
     [<TestMethod>]
     member this.``IsNull on null is true``() =
         let expr = Expr.UnaryOperation(UnaryOp.IsNull, Expr.Immediate(Value.Null))
-        let ret = compileAndRun expr
+        let ret = compileAndRunExpr expr
 
         ret |> should equal (PrimitiveTypes.encodeBool true)
 
@@ -98,14 +98,14 @@ type BinaryOperations() =
     [<TestMethod>]
     member this.``Add with positive integers``() =
         let expr = Expr.BinaryOperation(BinaryOp.Add, Expr.Immediate(Value.Int(3)), Expr.Immediate(Value.Int(2)))
-        let ret = compileAndRun expr
+        let ret = compileAndRunExpr expr
 
         ret |> should equal (PrimitiveTypes.encodeInt 5)
 
     [<TestMethod>]
     member this.``Sub with positive integers``() =
         let expr = Expr.BinaryOperation(BinaryOp.Sub, Expr.Immediate(Value.Int(5)), Expr.Immediate(Value.Int(2)))
-        let ret = compileAndRun expr
+        let ret = compileAndRunExpr expr
 
         ret |> should equal (PrimitiveTypes.encodeInt 3)
 
@@ -118,7 +118,7 @@ type CompositeExpressions() =
             Expr.UnaryOperation(
                 UnaryOp.IsZero, 
                 Expr.BinaryOperation(BinaryOp.Sub, Expr.Immediate(Value.Int(5)), Expr.Immediate(Value.Int(5))))
-        let ret = compileAndRun expr
+        let ret = compileAndRunExpr expr
 
         ret |> should equal (PrimitiveTypes.encodeBool true)
 
@@ -134,7 +134,7 @@ type LetBindings() =
                     BinaryOp.Add,
                     Expr.Immediate(Value.Int(10)),
                     Expr.VariableRef("foo")))
-        let ret = compileAndRun expr
+        let ret = compileAndRunExpr expr
 
         ret |> should equal (PrimitiveTypes.encodeInt 15)
     
@@ -148,7 +148,7 @@ type LetBindings() =
                     BinaryOp.Add,
                     Expr.VariableRef("foo"),
                     Expr.VariableRef("bar")))
-        let ret = compileAndRun expr
+        let ret = compileAndRunExpr expr
 
         ret |> should equal (PrimitiveTypes.encodeInt 15)
 
@@ -163,7 +163,7 @@ type LetBindings() =
                         BinaryOp.Add,
                         Expr.VariableRef("foo"),
                         Expr.VariableRef("bar"))))
-        let ret = compileAndRun expr
+        let ret = compileAndRunExpr expr
 
         ret |> should equal (PrimitiveTypes.encodeInt 15)
 
@@ -178,7 +178,7 @@ type LetBindings() =
                         BinaryOp.Add,
                         Expr.VariableRef("foo"),
                         Expr.Immediate(Value.Int(1)))))
-        let ret = compileAndRun expr
+        let ret = compileAndRunExpr expr
 
         ret |> should equal (PrimitiveTypes.encodeInt 11)
 
@@ -191,7 +191,7 @@ type LetBindings() =
                     BinaryOp.Add,
                     Expr.VariableRef("foo"),
                     Expr.Immediate(Value.Int(10))))
-        let ret = compileAndRun expr
+        let ret = compileAndRunExpr expr
 
         ret |> should equal (PrimitiveTypes.encodeInt 16)
 
@@ -205,7 +205,7 @@ type LetBindings() =
                     Expr.VariableRef("bar"),
                     Expr.Immediate(Value.Int(10))))
         
-        (fun () -> compileAndRun expr |> ignore) |> should throw typeof<System.Exception>
+        (fun () -> compileAndRunExpr expr |> ignore) |> should throw typeof<System.Exception>
 
 [<TestClass>]
 type Conditionals() =
@@ -217,7 +217,7 @@ type Conditionals() =
                 Expr.UnaryOperation(UnaryOp.IsZero, Expr.Immediate(Value.Int(0))),
                 Expr.Immediate(Value.Bool(true)),
                 Expr.Immediate(Value.Bool(false)))
-        let ret = compileAndRun expr
+        let ret = compileAndRunExpr expr
 
         ret |> should equal (PrimitiveTypes.encodeBool(true))
 
@@ -228,6 +228,21 @@ type Conditionals() =
                 Expr.UnaryOperation(UnaryOp.IsZero, Expr.Immediate(Value.Int(1))),
                 Expr.Immediate(Value.Bool(true)),
                 Expr.Immediate(Value.Bool(false)))
-        let ret = compileAndRun expr
+        let ret = compileAndRunExpr expr
 
         ret |> should equal (PrimitiveTypes.encodeBool(false))
+
+//[<TestClass>]
+//type Lambdas() =
+//
+//    [<TestMethod>]
+//    member this.``Basic lambda``() =
+//        let expr =
+//            Expr.Lambda(
+//                Expr.BinaryOperation(
+//                    BinaryOp.Add,
+//                    Expr.Immediate(Value.Int(5)),
+//                    Expr.VariableRef("foo")))
+//        let ret = compileAndRunExpr expr
+//
+//        ret |> 

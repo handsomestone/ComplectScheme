@@ -26,6 +26,7 @@ module Compiler =
         | Null
 
     type Identifier = string
+    type FunctionId = string * Type
 
     type StorageLoc =
         | LocalStorage of int
@@ -49,7 +50,7 @@ module Compiler =
         | BinaryOperation of BinaryOp * Expr * Expr
         | LetBinding of Binding list * Expr
         | Conditional of Expr * Expr * Expr
-        | Lambda of Expr
+        | FunctionCall of FunctionId * Expr list
     and Binding = Identifier * Expr
 
     type MethodDef = {
@@ -207,6 +208,10 @@ module Compiler =
             let stgLoc = LocalStorage(localBuilder.LocalIndex)
             ilGen.Emit(OpCodes.Stloc, localBuilder)
             (id, stgLoc)
+
+        let emitFunctionCall (funcType : Type) (env : Env) =
+            let invokeMethod = funcType.GetMethod("Invoke")
+            ilGen.Emit(OpCodes.Callvirt, invokeMethod)
             
         member this.CompileMethod expr env =
             let rec emitExpr expr env =
@@ -241,8 +246,10 @@ module Compiler =
                         ilGen.MarkLabel(l0)
                         emitExpr e2 env
                         ilGen.MarkLabel(l1)
-                    | Lambda(e) ->
-                        ()
+                    | FunctionCall(id, exprs) ->
+                        emitVariableRef (fst id) env
+                        exprs |> List.iter (fun e -> emitExpr e env)
+                        emitFunctionCall (snd id) env
             emitExpr expr env
             ilGen.Emit(OpCodes.Ret)
 
@@ -252,7 +259,7 @@ module Compiler =
                 methodDef.Name,
                 MethodAttributes.Public ||| MethodAttributes.Static,
                 methodDef.ReturnType,
-                [|  |])
+                List.toArray methodDef.ParameterTypes)
 
         let mcompiler = new MethodCompiler(methodBuilder)
         let env = new Env(None, None)
