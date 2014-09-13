@@ -11,14 +11,22 @@ module CompilerWrapper =
     let (asmInfo : AssemblyInfo) = { AssemblyName = "complect"; EntryPointName = "Main"; MainClassName = "MainClass"; ExecutableName = "program.exe" }
 
     let compile expr =
-        let mainFunctionInfo = { Name = "Main"; Body = expr }
-        let mainTypeInfo = { Name  = "MainClass"; Functions = [ mainFunctionInfo ] }
+        let mainFunctionInfo = {
+            Name = "Main";
+            Body = expr;
+            ReturnType = typeof<int>
+            ParameterTypes = [ ];
+        }
+        let mainTypeInfo = {
+            Name  = "MainClass";
+            Functions = [ mainFunctionInfo ]
+        }
 
         Compiler.build asmInfo mainTypeInfo
 
     let compileAndRun expr =
         let mainType = compile expr
-        Compiler.drive mainType [| Array.empty<string> |]
+        Compiler.drive mainType [| |]
     
 open CompilerWrapper
 
@@ -197,7 +205,7 @@ type LetBindings() =
                     Expr.VariableRef("bar"),
                     Expr.Immediate(Value.Int(10))))
         
-        should throw typeof<System.Exception> (fun () -> compileAndRun expr |> ignore)
+        (fun () -> compileAndRun expr |> ignore) |> should throw typeof<System.Exception>
 
 [<TestClass>]
 type Conditionals() =

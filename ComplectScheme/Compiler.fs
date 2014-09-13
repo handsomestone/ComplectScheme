@@ -52,14 +52,16 @@ module Compiler =
         | Lambda of Expr
     and Binding = Identifier * Expr
 
-    type FunctionInfo = {
+    type MethodDef = {
         Name : string;
         Body : Expr;
+        ReturnType : Type;
+        ParameterTypes : Type list
         }
 
-    type TypeInfo = {
+    type TypeDef = {
         Name : string;
-        Functions : FunctionInfo list;
+        Functions : MethodDef list;
         }
 
     type Env(env : Env option, bindings : BindingRef list option) =
@@ -244,28 +246,28 @@ module Compiler =
             emitExpr expr env
             ilGen.Emit(OpCodes.Ret)
 
-    let compileFunction (typeBuilder : TypeBuilder) (funcInfo : FunctionInfo) =
+    let compileMethod (typeBuilder : TypeBuilder) (methodDef : MethodDef) =
         let methodBuilder = 
             typeBuilder.DefineMethod(
-                funcInfo.Name,
+                methodDef.Name,
                 MethodAttributes.Public ||| MethodAttributes.Static,
-                typeof<int>,
-                [| typeof<string>.MakeArrayType() |])
+                methodDef.ReturnType,
+                [|  |])
 
         let mcompiler = new MethodCompiler(methodBuilder)
         let env = new Env(None, None)
-        mcompiler.CompileMethod funcInfo.Body env
+        mcompiler.CompileMethod methodDef.Body env
 
-    let compileType (moduleBuilder : ModuleBuilder) (typeInfo : TypeInfo) =
+    let compileType (moduleBuilder : ModuleBuilder) (typeDef : TypeDef) =
         let typeBuilder =
             moduleBuilder.DefineType(
-                typeInfo.Name,
+                typeDef.Name,
                 TypeAttributes.Public ||| TypeAttributes.Class)  // what are default attributes?
 
-        typeInfo.Functions |> List.iter (compileFunction typeBuilder)
+        typeDef.Functions |> List.iter (compileMethod typeBuilder)
         typeBuilder.CreateType()
 
-    let compile asmInfo outFile (typeInfos : TypeInfo list) (entryPoint : string) =
+    let compile asmInfo outFile (typeDefs : TypeDef list) (entryPoint : string) =
         let domain = AppDomain.CurrentDomain
         let asmName = new AssemblyName(asmInfo.AssemblyName)
         let asmBuilder = domain.DefineDynamicAssembly(asmName, AssemblyBuilderAccess.RunAndSave)
@@ -278,7 +280,7 @@ module Compiler =
             ModuleBuilder = moduleBuilder;
             }
 
-        let createdTypes = typeInfos |> List.map (compileType moduleBuilder)
+        let createdTypes = typeDefs |> List.map (compileType moduleBuilder)
         
         let mainMethod = 
             createdTypes 
@@ -293,9 +295,6 @@ module Compiler =
         createdTypes
 
     let mainExpr =
-        //let methodCompiler = new MethodCompiler(ilGen, compilerInfo)
-        
-        //let env = new Env(None, None)
         let expr =
             Expr.LetBinding(
                 [("foo", Expr.Immediate(Value.Int(5)))],
@@ -304,16 +303,14 @@ module Compiler =
                     Expr.Immediate(Value.Int(10)),
                     Expr.VariableRef("foo")))
         expr
-        //methodCompiler.CompileMethod expr env
 
-    // Create a new instance of the main type and call the "Main" method
     let drive (mainType : Type) args =
         let instance = Activator.CreateInstance(mainType)
         let mainMethod = mainType.GetMethod("Main")
         mainMethod.Invoke(instance, args)
 
-    let build (asmInfo : AssemblyInfo)  (mainTypeInfo : TypeInfo) =
-        let createdTypes = compile asmInfo asmInfo.ExecutableName [ mainTypeInfo ] asmInfo.EntryPointName
+    let build (asmInfo : AssemblyInfo)  (mainTypeDef : TypeDef) =
+        let createdTypes = compile asmInfo asmInfo.ExecutableName [ mainTypeDef ] asmInfo.EntryPointName
         let mainType =
             createdTypes
             |> List.find (fun f -> f.Name = asmInfo.MainClassName)
@@ -321,9 +318,22 @@ module Compiler =
 
     [<EntryPoint>]
     let main argv = 
-        let asmInfo = { AssemblyName = "complect"; EntryPointName = "Main"; MainClassName = "MainClass"; ExecutableName = "program.exe" }
-        let mainFunctionInfo = { Name = "Main"; Body = mainExpr }
-        let mainTypeInfo = { Name  = "MainClass"; Functions = [ mainFunctionInfo ] }
+        let asmInfo = {
+            AssemblyName = "complect";
+            EntryPointName = "Main";
+            MainClassName = "MainClass";
+            ExecutableName = "program.exe"
+        }
+        let mainFunctionInfo = {
+            Name = "Main";
+            Body = mainExpr;
+            ReturnType = typeof<int>;
+            ParameterTypes = [ typeof<string>.MakeArrayType() ];
+        }
+        let mainTypeInfo = {
+            Name  = "MainClass";
+            Functions = [ mainFunctionInfo ]
+        }
 
         let mainType = build asmInfo mainTypeInfo
         let ret = drive mainType [| Array.empty<string> |]
