@@ -10,14 +10,11 @@ open Compiler
 module CompilerWrapper = 
     let (asmInfo : AssemblyInfo) = { AssemblyName = "complect"; EntryPointName = "Main"; MainClassName = "MainClass"; ExecutableName = "program.exe" }
 
-    let generateMain expr (ilGen : ILGenerator) =
-        let emitter = new ILEmitter(ilGen)
-        let env = new Env(None, None)
-        emitter.EmitExpr expr env
-        ilGen.Emit(OpCodes.Ret)
-    
     let compile expr =
-        Compiler.compile asmInfo asmInfo.ExecutableName (generateMain expr)
+        let mainFunctionInfo = { Name = "Main"; Body = expr }
+        let mainTypeInfo = { Name  = "MainClass"; Functions = [ mainFunctionInfo ] }
+
+        Compiler.build asmInfo mainTypeInfo
 
     let compileAndRun expr =
         let mainType = compile expr

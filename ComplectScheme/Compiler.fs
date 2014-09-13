@@ -12,6 +12,13 @@ module Compiler =
         EntryPointName : string
         }
 
+    type CompilerInfo = {
+        Domain : AppDomain;
+        AsmName : AssemblyName;
+        AsmBuilder : AssemblyBuilder;
+        ModuleBuilder : ModuleBuilder;
+        }
+
     type Value =
         | Int of int
         | Char of char
@@ -42,7 +49,18 @@ module Compiler =
         | BinaryOperation of BinaryOp * Expr * Expr
         | LetBinding of Binding list * Expr
         | Conditional of Expr * Expr * Expr
+        | Lambda of Expr
     and Binding = Identifier * Expr
+
+    type FunctionInfo = {
+        Name : string;
+        Body : Expr;
+        }
+
+    type TypeInfo = {
+        Name : string;
+        Functions : FunctionInfo list;
+        }
 
     type Env(env : Env option, bindings : BindingRef list option) =
         let map = new Map<Identifier, StorageLoc>(match bindings with Some(b) -> (Seq.ofList b) | None -> Seq.empty)
@@ -138,8 +156,10 @@ module Compiler =
 
         let CompareEq (ilGen : ILGenerator) =
             ilGen.Emit(OpCodes.Ceq)
-
-    type ILEmitter(ilGen : ILGenerator) =
+        
+    type MethodCompiler(methodBuilder : MethodBuilder) =
+        let ilGen = methodBuilder.GetILGenerator()
+            
         let emitValue (value : Value) =
             let imm = (PrimitiveTypes.encodeValue value)
             ilGen.Emit(OpCodes.Ldc_I4, imm)
@@ -186,7 +206,7 @@ module Compiler =
             ilGen.Emit(OpCodes.Stloc, localBuilder)
             (id, stgLoc)
             
-        member this.EmitExpr expr env =
+        member this.CompileMethod expr env =
             let rec emitExpr expr env =
                 match expr with
                     | Immediate(i) -> emitValue i
@@ -208,7 +228,7 @@ module Compiler =
                                 storeLocalVariable binding
                                 )
                         emitExpr e (new Env(Some(env), Some(bindingRefs)))
-                    | Conditional (test, e1, e2) ->
+                    | Conditional(test, e1, e2) ->
                         let l0 = ilGen.DefineLabel()
                         let l1 = ilGen.DefineLabel()
                         emitExpr test env
@@ -219,37 +239,63 @@ module Compiler =
                         ilGen.MarkLabel(l0)
                         emitExpr e2 env
                         ilGen.MarkLabel(l1)
+                    | Lambda(e) ->
+                        ()
             emitExpr expr env
+            ilGen.Emit(OpCodes.Ret)
 
-    let compile asmInfo outFile generateIL =
-        let domain = AppDomain.CurrentDomain
-        let asmName = new AssemblyName(asmInfo.AssemblyName)
-        let asmBuilder = domain.DefineDynamicAssembly(asmName, AssemblyBuilderAccess.RunAndSave)
-        let moduleBuilder = asmBuilder.DefineDynamicModule(asmInfo.ExecutableName, true)
-        let mainTypeBuilder =
-            moduleBuilder.DefineType(
-                asmInfo.MainClassName,
-                TypeAttributes.Public ||| TypeAttributes.Class)  // what are default attributes?
-        let mainMethod = 
-            mainTypeBuilder.DefineMethod(
-                asmInfo.EntryPointName,
+    let compileFunction (typeBuilder : TypeBuilder) (funcInfo : FunctionInfo) =
+        let methodBuilder = 
+            typeBuilder.DefineMethod(
+                funcInfo.Name,
                 MethodAttributes.Public ||| MethodAttributes.Static,
                 typeof<int>,
                 [| typeof<string>.MakeArrayType() |])
 
-        asmBuilder.SetEntryPoint(mainMethod)
-
-        let ilGen = mainMethod.GetILGenerator()
-        do generateIL ilGen
-
-        let mainType = mainTypeBuilder.CreateType()
-        asmBuilder.Save(outFile)
-        mainType
-
-    let generateMain (ilGen : ILGenerator) =
-        let emitter = new ILEmitter(ilGen)
-        
+        let mcompiler = new MethodCompiler(methodBuilder)
         let env = new Env(None, None)
+        mcompiler.CompileMethod funcInfo.Body env
+
+    let compileType (moduleBuilder : ModuleBuilder) (typeInfo : TypeInfo) =
+        let typeBuilder =
+            moduleBuilder.DefineType(
+                typeInfo.Name,
+                TypeAttributes.Public ||| TypeAttributes.Class)  // what are default attributes?
+
+        typeInfo.Functions |> List.iter (compileFunction typeBuilder)
+        typeBuilder.CreateType()
+
+    let compile asmInfo outFile (typeInfos : TypeInfo list) (entryPoint : string) =
+        let domain = AppDomain.CurrentDomain
+        let asmName = new AssemblyName(asmInfo.AssemblyName)
+        let asmBuilder = domain.DefineDynamicAssembly(asmName, AssemblyBuilderAccess.RunAndSave)
+        let moduleBuilder = asmBuilder.DefineDynamicModule(asmInfo.ExecutableName, true)
+
+        let compilerInfo = {
+            Domain = domain;
+            AsmName = asmName;
+            AsmBuilder = asmBuilder;
+            ModuleBuilder = moduleBuilder;
+            }
+
+        let createdTypes = typeInfos |> List.map (compileType moduleBuilder)
+        
+        let mainMethod = 
+            createdTypes 
+            |> List.choose (fun f ->
+                match f.GetMethod(entryPoint) with 
+                    | null -> None 
+                    | m -> Some(m))
+            |> Seq.exactlyOne
+
+        asmBuilder.SetEntryPoint(mainMethod)
+        asmBuilder.Save(outFile)
+        createdTypes
+
+    let mainExpr =
+        //let methodCompiler = new MethodCompiler(ilGen, compilerInfo)
+        
+        //let env = new Env(None, None)
         let expr =
             Expr.LetBinding(
                 [("foo", Expr.Immediate(Value.Int(5)))],
@@ -257,9 +303,8 @@ module Compiler =
                     BinaryOp.Add,
                     Expr.Immediate(Value.Int(10)),
                     Expr.VariableRef("foo")))
-        emitter.EmitExpr expr env
-
-        ilGen.Emit(OpCodes.Ret)
+        expr
+        //methodCompiler.CompileMethod expr env
 
     // Create a new instance of the main type and call the "Main" method
     let drive (mainType : Type) args =
@@ -267,11 +312,20 @@ module Compiler =
         let mainMethod = mainType.GetMethod("Main")
         mainMethod.Invoke(instance, args)
 
+    let build (asmInfo : AssemblyInfo)  (mainTypeInfo : TypeInfo) =
+        let createdTypes = compile asmInfo asmInfo.ExecutableName [ mainTypeInfo ] asmInfo.EntryPointName
+        let mainType =
+            createdTypes
+            |> List.find (fun f -> f.Name = asmInfo.MainClassName)
+        mainType
+
     [<EntryPoint>]
     let main argv = 
         let asmInfo = { AssemblyName = "complect"; EntryPointName = "Main"; MainClassName = "MainClass"; ExecutableName = "program.exe" }
-        let mainType = compile asmInfo asmInfo.ExecutableName generateMain
+        let mainFunctionInfo = { Name = "Main"; Body = mainExpr }
+        let mainTypeInfo = { Name  = "MainClass"; Functions = [ mainFunctionInfo ] }
 
+        let mainType = build asmInfo mainTypeInfo
         let ret = drive mainType [| Array.empty<string> |]
 
         printfn "%A" ret
