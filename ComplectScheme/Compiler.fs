@@ -58,7 +58,7 @@ module Compiler =
 
     type Expr =
         | Immediate of Value
-        | VariableRef of Identifier
+        | VariableRef of Identifier  // needs qualifiers?
         | UnaryOperation of UnaryOp * Expr
         | BinaryOperation of BinaryOp * Expr * Expr
         | LetBinding of Binding list * Expr
@@ -199,15 +199,20 @@ module Compiler =
                 ReturnType = Some(typeof<int>);  // ???
                 Parameters = formalParams
             }
-            
+
+            let capturedFields = capturedParams |> List.map (fun (id, t) -> { Name = "_" + id; Type = t })
+            let ctorExpr = 
+                Expr.Sequence(
+                    capturedParams |> List.map (fun (id, t) ->
+                        Expr.Assign("_" + id, Expr.VariableRef(id))
+                        ))
+
             let ctor : MethodDef = {
                 Name = "";
-                Body = ();
+                Body = ctorExpr;
                 ReturnType = None;
                 Parameters = capturedParams
             }
-
-            let capturedFields = capturedParams |> List.map (fun (id, t) -> { Name = id; Type = t })
 
             let lambdaType : TypeDef = {
                 Name = (sprintf "lambda%i" (ctx.SymGen.GetNewSymbol()));
@@ -215,34 +220,30 @@ module Compiler =
                 Ctors = [ ctor ];
                 NestedTypes = [];
                 IsNested = true;
-                Fields = [];
+                Fields = capturedFields;
                 }
 
-            let ctorExpr = 
-                Expr.Assign()
+            lambdaType
 
-            capturedBindings
-                |> List.iter (fun (id, stg) -> 
-                    match stg with
-                        | FieldStorage (_, fb) -> 
-                            constructorIlGen.Emit(OpCodes.Ldarg_0)
-                            constructorIlGen.Emit(OpCodes.Stfld, fb)
-                        | _ -> failwithf "Captured bindings must be assigned to fields"
-                    )
-
-            //let methodCompiler = new MethodCompiler(methodBuilder.GetILGenerator(), typeBuilder, ctx)
-            //let env = new Env(None, Some(List.append paramBindings capturedBindings))
-            //methodCompiler.CompileMethod expr env
-
-            (constructorBuilder, methodBuilder)
+        let defaultTypes (ids : Identifier list) =
+            ids |> List.map (fun id -> (id, typeof<int>))
 
         member this.AnalyzeMethod (typeBuilder : TypeBuilder) (methodDef : MethodDef) : TypeDef list =
-            let rec analyzeMethod expr =
+            let rec analyzeExpr (expr : Expr) : TypeDef list =
                 match expr with
+                    | UnaryOperation(_, e) -> analyzeExpr e
+                    | BinaryOperation(_, e1, e2) -> List.append (analyzeExpr e1) (analyzeExpr e2)
+                    | LetBinding(_, e) -> analyzeExpr e
+                    | Conditional(e1, e2, e3) -> List.concat [(analyzeExpr e1); (analyzeExpr e2); (analyzeExpr e3)]
+                    | FunctionCall (e, _) -> analyzeExpr e
                     | Lambda(formalParams, capturedParams, e) ->
-                        let closure = createLambdaType typeBuilder formalParams capturedParams e
-            analyzeMethod methodDef.Body
-            ()
+                        let closures = analyzeExpr e
+                        let closure = createLambdaType typeBuilder (defaultTypes formalParams) (defaultTypes capturedParams) e
+                        closure :: closures
+                    | Assign(_, e) -> analyzeExpr e
+                    | Sequence(es) -> es |> List.map analyzeExpr |> List.concat
+                    | _ -> []
+            analyzeExpr methodDef.Body
         
     type MethodCompiler(ilGen : ILGenerator, typeBuilder : TypeBuilder, ctx : CompilerContext) =
         let emitValue (value : Value) =
