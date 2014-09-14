@@ -14,12 +14,16 @@ module CompilerWrapper =
         let mainFunctionInfo = {
             Name = "Main";
             Body = expr;
-            ReturnType = typeof<int>
-            ParameterTypes = [ ];
+            ReturnType = Some(typeof<int>)
+            Parameters = [];
         }
         let mainTypeInfo = {
             Name  = "MainClass";
-            Functions = [ mainFunctionInfo ]
+            Functions = [ mainFunctionInfo ];
+            Ctors = [];
+            NestedTypes = [];
+            IsNested = false;
+            Fields = [];
         }
 
         Compiler.build asmInfo mainTypeInfo

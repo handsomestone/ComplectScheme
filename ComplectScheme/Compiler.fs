@@ -192,7 +192,7 @@ module Compiler =
             ilGen.Emit(OpCodes.Ceq)
 
     type LambdaReWriter(moduleBuilder : ModuleBuilder, ctx : CompilerContext) =
-        let createLambdaType (typeBuilder : TypeBuilder) (formalParams : TypedIdentifier list) (capturedParams : TypedIdentifier list) expr =
+        let createLambdaType (formalParams : TypedIdentifier list) (capturedParams : TypedIdentifier list) expr =
             let invokeMethod : MethodDef = {
                 Name = "Invoke";
                 Body = expr;  // TODO -- rewrite storage locs?
@@ -228,7 +228,7 @@ module Compiler =
         let defaultTypes (ids : Identifier list) =
             ids |> List.map (fun id -> (id, typeof<int>))
 
-        member this.AnalyzeMethod (typeBuilder : TypeBuilder) (methodDef : MethodDef) : TypeDef list =
+        member this.AnalyzeMethod (methodDef : MethodDef) : TypeDef list =
             let rec analyzeExpr (expr : Expr) : TypeDef list =
                 match expr with
                     | UnaryOperation(_, e) -> analyzeExpr e
@@ -238,12 +238,15 @@ module Compiler =
                     | FunctionCall (e, _) -> analyzeExpr e
                     | Lambda(formalParams, capturedParams, e) ->
                         let closures = analyzeExpr e
-                        let closure = createLambdaType typeBuilder (defaultTypes formalParams) (defaultTypes capturedParams) e
+                        let closure = createLambdaType (defaultTypes formalParams) (defaultTypes capturedParams) e
                         closure :: closures
                     | Assign(_, e) -> analyzeExpr e
                     | Sequence(es) -> es |> List.map analyzeExpr |> List.concat
                     | _ -> []
             analyzeExpr methodDef.Body
+
+        member this.AnalyzeType (typeDef : TypeDef) : TypeDef list =
+            typeDef.Functions |> List.collect this.AnalyzeMethod
         
     type MethodCompiler(ilGen : ILGenerator, typeBuilder : TypeBuilder, ctx : CompilerContext) =
         let emitValue (value : Value) =
@@ -480,7 +483,9 @@ module Compiler =
             ModuleBuilder = moduleBuilder;
             }
 
-        let createdTypes = typeDefs |> List.map (compileType moduleBuilder ctx)
+        let rewriter = new LambdaReWriter(moduleBuilder, ctx)
+        let expandedTypes = typeDefs |> List.collect rewriter.AnalyzeType
+        let createdTypes = expandedTypes |> List.map (compileType moduleBuilder ctx)
         
         let mainMethod = 
             createdTypes 
