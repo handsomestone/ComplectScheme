@@ -69,14 +69,22 @@ module Compiler =
     type MethodDef = {
         Name : string;
         Body : Expr;
-        ReturnType : Type;
+        ReturnType : Type option;
         ParameterTypes : Type list
         }
 
     type TypeDef = {
         Name : string;
         Functions : MethodDef list;
+        Ctors : MethodDef list;
+        NestedTypes : TypeDef list;
+        IsNested : bool;
         }
+
+    let someOrNull =
+        function
+            | Some (t) -> t
+            | None -> null
 
     type Env(env : Env option, bindings : BindingRef list option) =
         let map = new Map<Identifier, StorageLoc>(match bindings with Some(b) -> (Seq.ofList b) | None -> Seq.empty)
@@ -172,6 +180,66 @@ module Compiler =
 
         let CompareEq (ilGen : ILGenerator) =
             ilGen.Emit(OpCodes.Ceq)
+
+    type LambdaReWriter(moduleBuilder : ModuleBuilder, ctx : CompilerContext) =
+        let createLambdaType (typeBuilder : TypeBuilder) (formalParams : Identifier list) (capturedParams : Identifier list) expr =
+            let lambdaType = 
+                typeBuilder.DefineNestedType(
+                    (sprintf "lambda%i" (ctx.SymGen.GetNewSymbol())),
+                    TypeAttributes.Class ||| TypeAttributes.NestedPublic,
+                    typeof<obj>)
+
+            let methodBuilder = 
+                lambdaType.DefineMethod(
+                    "Invoke", 
+                    MethodAttributes.Public,
+                    typeof<int>,
+                    formalParams |> List.map (fun p -> typeof<int>) |> List.toArray)
+
+            let constructorBuilder =
+                lambdaType.DefineConstructor(
+                    MethodAttributes.Public,
+                    CallingConventions.HasThis,
+                    capturedParams |> List.map (fun p -> typeof<int>) |> List.toArray)
+
+            let capturedBindings =
+                capturedParams 
+                |> List.map (fun id -> 
+                    let fieldBuilder = typeBuilder.DefineField(id, typeof<int>, FieldAttributes.Public)
+                    (id, StorageLoc.FieldStorage(StorageLoc.ArgumentStorage(0), fieldBuilder))
+                    )
+
+            let paramBindings =
+                formalParams
+                |> List.mapi (fun i id -> (id, StorageLoc.ArgumentStorage(i + 1)))
+
+            let constructorIlGen = constructorBuilder.GetILGenerator();
+            constructorIlGen.Emit(OpCodes.Ldarg_0)
+            constructorIlGen.Emit(
+                OpCodes.Call,
+                (typeof<obj>).GetConstructor([||]))
+            capturedBindings
+                |> List.iter (fun (id, stg) -> 
+                    match stg with
+                        | FieldStorage (_, fb) -> 
+                            constructorIlGen.Emit(OpCodes.Ldarg_0)
+                            constructorIlGen.Emit(OpCodes.Stfld, fb)
+                        | _ -> failwithf "Captured bindings must be assigned to fields"
+                    )
+
+            //let methodCompiler = new MethodCompiler(methodBuilder.GetILGenerator(), typeBuilder, ctx)
+            //let env = new Env(None, Some(List.append paramBindings capturedBindings))
+            //methodCompiler.CompileMethod expr env
+
+            (constructorBuilder, methodBuilder)
+
+        member this.AnalyzeMethod (typeBuilder : TypeBuilder) (methodDef : MethodDef) : TypeDef list =
+            let rec analyzeMethod expr =
+                match expr with
+                    | Lambda(formalParams, capturedParams, e) ->
+                        let closure = createLambdaType typeBuilder formalParams capturedParams e
+            analyzeMethod methodDef.Body
+            ()
         
     type MethodCompiler(ilGen : ILGenerator, typeBuilder : TypeBuilder, ctx : CompilerContext) =
         let emitValue (value : Value) =
@@ -237,57 +305,6 @@ module Compiler =
             ilGen.Emit(OpCodes.Stloc, localBuilder)
             (id, stgLoc)
 
-        let createLambdaType (formalParams : Identifier list) (capturedParams : Identifier list) expr =
-            let lambdaType = 
-                typeBuilder.DefineNestedType(
-                    (sprintf "lambda%i" (ctx.SymGen.GetNewSymbol())),
-                    TypeAttributes.Class ||| TypeAttributes.NestedPublic,
-                    typeof<obj>)
-
-            let methodBuilder = 
-                lambdaType.DefineMethod(
-                    "Invoke", 
-                    MethodAttributes.Public,
-                    typeof<int>,
-                    formalParams |> List.map (fun p -> typeof<int>) |> List.toArray)
-
-            let constructorBuilder =
-                lambdaType.DefineConstructor(
-                    MethodAttributes.Public,
-                    CallingConventions.HasThis,
-                    capturedParams |> List.map (fun p -> typeof<int>) |> List.toArray)
-
-            let capturedBindings =
-                capturedParams 
-                |> List.map (fun id -> 
-                    let fieldBuilder = typeBuilder.DefineField(id, typeof<int>, FieldAttributes.Public)
-                    (id, StorageLoc.FieldStorage(StorageLoc.ArgumentStorage(0), fieldBuilder))
-                    )
-
-            let paramBindings =
-                formalParams
-                |> List.mapi (fun i id -> (id, StorageLoc.ArgumentStorage(i + 1)))
-
-            let constructorIlGen = constructorBuilder.GetILGenerator();
-            constructorIlGen.Emit(OpCodes.Ldarg_0)
-            constructorIlGen.Emit(
-                OpCodes.Call,
-                (typeof<obj>).GetConstructor([||]))
-            capturedBindings
-                |> List.iter (fun (id, stg) -> 
-                    match stg with
-                        | FieldStorage (_, fb) -> 
-                            constructorIlGen.Emit(OpCodes.Ldarg_0)
-                            constructorIlGen.Emit(OpCodes.Stfld, fb)
-                        | _ -> failwithf "Captured bindings must be assigned to fields"
-                    )
-
-            let methodCompiler = new MethodCompiler(methodBuilder.GetILGenerator(), typeBuilder, ctx)
-            let env = new Env(None, Some(List.append paramBindings capturedBindings))
-            methodCompiler.CompileMethod expr env
-
-            (constructorBuilder, methodBuilder)
-
         let emitNewObj (ctor : ConstructorInfo) (capturedParams : Identifier list) =
             ilGen.Emit(OpCodes.Newobj, ctor)
             
@@ -346,7 +363,7 @@ module Compiler =
             typeBuilder.DefineMethod(
                 methodDef.Name,
                 MethodAttributes.Public ||| MethodAttributes.Static,
-                methodDef.ReturnType,
+                (someOrNull methodDef.ReturnType),
                 List.toArray methodDef.ParameterTypes)
 
         let mcompiler = new MethodCompiler(methodBuilder.GetILGenerator(), typeBuilder, ctx)
@@ -354,10 +371,16 @@ module Compiler =
         mcompiler.CompileMethod methodDef.Body env
 
     let compileType (moduleBuilder : ModuleBuilder) (ctx : CompilerContext) (typeDef : TypeDef) =
+        let typeAttrs = 
+            TypeAttributes.Class ||| 
+            (if typeDef.IsNested then 
+                TypeAttributes.NestedPublic
+            else
+                TypeAttributes.Public)
         let typeBuilder =
             moduleBuilder.DefineType(
                 typeDef.Name,
-                TypeAttributes.Public ||| TypeAttributes.Class)  // what are default attributes?
+                typeAttrs)  // what are default attributes?
 
         typeDef.Functions |> List.iter (compileMethod typeBuilder ctx)
         typeBuilder.CreateType()
@@ -423,17 +446,20 @@ module Compiler =
             AssemblyName = "complect";
             EntryPointName = "Main";
             MainClassName = "MainClass";
-            ExecutableName = "program.exe"
+            ExecutableName = "program.exe";
         }
         let mainFunctionInfo = {
             Name = "Main";
             Body = mainExpr;
-            ReturnType = typeof<int>;
+            ReturnType = Some(typeof<int>);
             ParameterTypes = [ typeof<string>.MakeArrayType() ];
         }
         let mainTypeInfo = {
             Name  = "MainClass";
-            Functions = [ mainFunctionInfo ]
+            Functions = [ mainFunctionInfo ];
+            Ctors = [];
+            NestedTypes = [];
+            IsNested = false;
         }
 
         let mainType = build asmInfo mainTypeInfo
