@@ -173,9 +173,7 @@ module Compiler =
         let CompareEq (ilGen : ILGenerator) =
             ilGen.Emit(OpCodes.Ceq)
         
-    type MethodCompiler(methodBuilder : MethodBuilder, typeBuilder : TypeBuilder, ctx : CompilerContext) =
-        let ilGen = methodBuilder.GetILGenerator()
-            
+    type MethodCompiler(ilGen : ILGenerator, typeBuilder : TypeBuilder, ctx : CompilerContext) =
         let emitValue (value : Value) =
             let imm = (PrimitiveTypes.encodeValue value)
             ilGen.Emit(OpCodes.Ldc_I4, imm)
@@ -213,12 +211,22 @@ module Compiler =
         let emitArgumentRef (ref : int) =
             ilGen.Emit(OpCodes.Ldarg, ref)
 
+        let emitFieldRef (fi : FieldInfo) =
+            ilGen.Emit(OpCodes.Ldfld, fi)
+            ()
+
+        let rec emitStorageLoad (stg : StorageLoc) =
+            match stg with
+                | LocalStorage local -> emitLocalVariableRef local
+                | ArgumentStorage arg -> emitArgumentRef arg
+                | FieldStorage (stg, fi) -> 
+                    emitStorageLoad stg
+                    emitFieldRef fi
+
         let emitVariableRef ref (env : Env) =
             match env.FindIdentifier ref with
                 | Some stg -> 
-                    match stg with
-                        | LocalStorage local -> emitLocalVariableRef local
-                        | ArgumentStorage arg -> emitArgumentRef arg
+                    emitStorageLoad stg
                 | None -> failwithf "Unable to find binding for identifier %s" ref
             
         let storeLocalVariable (binding : Binding) : BindingRef =
@@ -229,43 +237,59 @@ module Compiler =
             ilGen.Emit(OpCodes.Stloc, localBuilder)
             (id, stgLoc)
 
-        let emitFunctionCall() =
-            let invokeMethod = typeof<Delegate>.GetMethod("Invoke")
-            ilGen.Emit(OpCodes.Callvirt, invokeMethod)
-
         let createLambdaType (formalParams : Identifier list) (capturedParams : Identifier list) expr =
             let lambdaType = 
                 typeBuilder.DefineNestedType(
                     (sprintf "lambda%i" (ctx.SymGen.GetNewSymbol())),
-                    TypeAttributes.Class,
-                    typeof<Delegate>)
+                    TypeAttributes.Class ||| TypeAttributes.NestedPublic,
+                    typeof<obj>)
 
             let methodBuilder = 
                 lambdaType.DefineMethod(
                     "Invoke", 
                     MethodAttributes.Public,
                     typeof<int>,
-                    formalParams |> List.map (fun t -> typeof<int>) |> List.toArray)
+                    formalParams |> List.map (fun p -> typeof<int>) |> List.toArray)
 
-            let capturedFields =
+            let constructorBuilder =
+                lambdaType.DefineConstructor(
+                    MethodAttributes.Public,
+                    CallingConventions.HasThis,
+                    capturedParams |> List.map (fun p -> typeof<int>) |> List.toArray)
+
+            let capturedBindings =
                 capturedParams 
                 |> List.map (fun id -> 
                     let fieldBuilder = typeBuilder.DefineField(id, typeof<int>, FieldAttributes.Public)
                     (id, StorageLoc.FieldStorage(StorageLoc.ArgumentStorage(0), fieldBuilder))
                     )
 
-            let functionParams =
+            let paramBindings =
                 formalParams
                 |> List.mapi (fun i id -> (id, StorageLoc.ArgumentStorage(i + 1)))
 
-            let methodCompiler = new MethodCompiler(methodBuilder, typeBuilder, ctx)
+            let constructorIlGen = constructorBuilder.GetILGenerator();
+            constructorIlGen.Emit(OpCodes.Ldarg_0)
+            constructorIlGen.Emit(
+                OpCodes.Call,
+                (typeof<obj>).GetConstructor([||]))
+            capturedBindings
+                |> List.iter (fun (id, stg) -> 
+                    match stg with
+                        | FieldStorage (_, fb) -> 
+                            constructorIlGen.Emit(OpCodes.Ldarg_0)
+                            constructorIlGen.Emit(OpCodes.Stfld, fb)
+                        | _ -> failwithf "Captured bindings must be assigned to fields"
+                    )
 
-            let env = new Env(None, Some(capturedFields))
+            let methodCompiler = new MethodCompiler(methodBuilder.GetILGenerator(), typeBuilder, ctx)
+            let env = new Env(None, Some(List.append paramBindings capturedBindings))
             methodCompiler.CompileMethod expr env
 
-            // compile constructor method
-            // emit constructor call w/ captured fields
-            ()
+            (constructorBuilder, methodBuilder)
+
+        let emitNewObj (ctor : ConstructorInfo) (capturedParams : Identifier list) =
+            ilGen.Emit(OpCodes.Newobj, ctor)
             
         member this.CompileMethod expr env =
             let rec emitExpr expr env =
@@ -307,10 +331,13 @@ module Compiler =
                             let (id, expr) = binding
                             emitExpr expr env
                             )
-                        emitFunctionCall()
+                        let invokeMethod = typeof<Func<int,int>>.GetMethod("Invoke")
+                        ilGen.Emit(OpCodes.Callvirt, invokeMethod)
                     | Lambda(formalParams, capturedParams, e) ->
-                        let lambdaType = createLambdaType formalParams capturedParams e
-                        emitNewObj lambdaType
+                        let (lambdaCtor, invokeMethod) = createLambdaType formalParams capturedParams e
+                        emitNewObj lambdaCtor capturedParams
+                        ilGen.Emit(OpCodes.Ldftn, invokeMethod)
+                        ilGen.Emit(OpCodes.Newobj, typeof<Func<int, int>>.GetConstructor([| typeof<obj>; typeof<IntPtr> |]))
             emitExpr expr env
             ilGen.Emit(OpCodes.Ret)
 
@@ -322,7 +349,7 @@ module Compiler =
                 methodDef.ReturnType,
                 List.toArray methodDef.ParameterTypes)
 
-        let mcompiler = new MethodCompiler(methodBuilder, typeBuilder, ctx)
+        let mcompiler = new MethodCompiler(methodBuilder.GetILGenerator(), typeBuilder, ctx)
         let env = new Env(None, None)
         mcompiler.CompileMethod methodDef.Body env
 
@@ -334,7 +361,7 @@ module Compiler =
 
         typeDef.Functions |> List.iter (compileMethod typeBuilder ctx)
         typeBuilder.CreateType()
-
+        
     let compile asmInfo outFile (typeDefs : TypeDef list) (entryPoint : string) (ctx : CompilerContext) =
         let domain = AppDomain.CurrentDomain
         let asmName = new AssemblyName(asmInfo.AssemblyName)
@@ -364,12 +391,17 @@ module Compiler =
 
     let mainExpr =
         let expr =
-            Expr.LetBinding(
-                [("foo", Expr.Immediate(Value.Int(5)))],
-                Expr.BinaryOperation(
-                    BinaryOp.Add,
-                    Expr.Immediate(Value.Int(10)),
-                    Expr.VariableRef("foo")))
+            Expr.FunctionCall(
+                Expr.LetBinding(
+                    [("foo", Expr.Immediate(Value.Int(1)))],
+                    Expr.Lambda(
+                        ["bar"],
+                        ["foo"],
+                        Expr.BinaryOperation(
+                            BinaryOp.Add,
+                            Expr.VariableRef("bar"),
+                            Expr.VariableRef("foo")))),
+                [("bar", Expr.Immediate(Value.Int(2)))])
         expr
 
     let drive (mainType : Type) args =

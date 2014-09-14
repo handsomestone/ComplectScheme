@@ -251,4 +251,4 @@ type Lambdas() =
                 [("bar", Expr.Immediate(Value.Int(2)))])
         let ret = compileAndRunExpr expr
 
-        ret |> 
+        ret |> should equal (PrimitiveTypes.encodeInt(3))
