@@ -232,17 +232,23 @@ type Conditionals() =
 
         ret |> should equal (PrimitiveTypes.encodeBool(false))
 
-//[<TestClass>]
-//type Lambdas() =
-//
-//    [<TestMethod>]
-//    member this.``Basic lambda``() =
-//        let expr =
-//            Expr.Lambda(
-//                Expr.BinaryOperation(
-//                    BinaryOp.Add,
-//                    Expr.Immediate(Value.Int(5)),
-//                    Expr.VariableRef("foo")))
-//        let ret = compileAndRunExpr expr
-//
-//        ret |> 
+[<TestClass>]
+type Lambdas() =
+
+    [<TestMethod>]
+    member this.``Basic lambda``() =
+        let expr =
+            Expr.FunctionCall(
+                Expr.LetBinding(
+                    [("foo", Expr.Immediate(Value.Int(1)))],
+                    Expr.Lambda(
+                        ["bar"],
+                        ["foo"],
+                        Expr.BinaryOperation(
+                            BinaryOp.Add,
+                            Expr.VariableRef("bar"),
+                            Expr.VariableRef("foo")))),
+                [("bar", Expr.Immediate(Value.Int(2)))])
+        let ret = compileAndRunExpr expr
+
+        ret |> 
