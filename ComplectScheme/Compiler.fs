@@ -66,6 +66,7 @@ module Compiler =
         | FunctionCall of Expr * Binding list
         | Lambda of Identifier list * Identifier list * Expr
         | Assign of Identifier * Expr
+        | Sequence of Expr list
     and Binding = Identifier * Expr
 
     type MethodDef = {
@@ -206,7 +207,7 @@ module Compiler =
                 Parameters = capturedParams
             }
 
-            let capturedFields = capturedParams |> List.map (fun id -> { Name = id; Type = typeof<int>  (* ??? *) })
+            let capturedFields = capturedParams |> List.map (fun (id, t) -> { Name = id; Type = t })
 
             let lambdaType : TypeDef = {
                 Name = (sprintf "lambda%i" (ctx.SymGen.GetNewSymbol()));
@@ -217,7 +218,8 @@ module Compiler =
                 Fields = [];
                 }
 
-            //let ctorExpr = 
+            let ctorExpr = 
+                Expr.Assign()
 
             capturedBindings
                 |> List.iter (fun (id, stg) -> 
@@ -375,9 +377,12 @@ module Compiler =
 //                        emitNewObj lambdaCtor capturedParams
 //                        ilGen.Emit(OpCodes.Ldftn, invokeMethod)
 //                        ilGen.Emit(OpCodes.Newobj, typeof<Func<int, int>>.GetConstructor([| typeof<obj>; typeof<IntPtr> |]))
+                        ()
                     | Assign(id, e) ->
                         emitExpr e env
                         emitVariableAssignment id env
+                    | Sequence(exprs) ->
+                        exprs |> List.iter (fun e -> emitExpr e env)
             emitExpr expr env
             ilGen.Emit(OpCodes.Ret)
 
