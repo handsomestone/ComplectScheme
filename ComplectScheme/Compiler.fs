@@ -202,7 +202,7 @@ module Compiler =
         member this.Return(x) : RewriterWrapper =
             (x, [])
 
-    type LambdaReWriter(moduleBuilder : ModuleBuilder, ctx : CompilerContext) =
+    type LambdaRewriter(ctx : CompilerContext) =
         let createLambdaType (formalParams : TypedIdentifier list) (capturedParams : TypedIdentifier list) expr =
             let invokeMethod : MethodDef = {
                 Name = "Invoke";
@@ -242,7 +242,7 @@ module Compiler =
         let defaultTypes (ids : Identifier list) =
             ids |> List.map (fun id -> (id, typeof<int>))
 
-        let lambdaRewriter (wrapper : RewriterWrapper) =
+        member this.Rewriter (wrapper : RewriterWrapper) =
             let (expr, _) = wrapper
             match expr with
                 | Lambda(formalParams, capturedParams, e) ->
@@ -252,29 +252,66 @@ module Compiler =
                     (e, [ closure ])
                 | other -> (other, [])
 
-        member this.RewriteMethod (rewriter : (Expr * TypeDef list -> Expr * TypeDef list)) (types : TypeDef list) (methodDef : MethodDef) =
+    type Rewriter() =
+        member this.RewriteMethod (rewriter : (RewriterWrapper -> RewriterWrapper)) (types : TypeDef list) (methodDef : MethodDef) =
             let rw = new RewriterBuilder()
-            let rec rewriteExpr' (expr : Expr) : (Expr * TypeDef list) =
-                let rewriteExpr = rewriteExpr'
-                let expr' =
+            let rec rewriteExpr expr =
+                let wrapper' =
                     match expr with
-//                        | Immediate(v) -> Immediate(v)
-//                        | VariableRef(ref) -> VariableRef(ref)
-//                        | UnaryOperation(op, e) -> UnaryOperation(op, rewriteExpr e)
+                        | Immediate(v) -> 
+                            rw {
+                                return Immediate(v)
+                            }
+                        | VariableRef(ref) -> 
+                            rw {
+                                return VariableRef(ref)
+                            }
+                        | UnaryOperation(op, e) -> 
+                            rw {
+                                let! e' = rewriteExpr e
+                                return UnaryOperation(op, e')
+                            }
                         | BinaryOperation(op, e1, e2) -> 
                             rw {
                                 let! e1' = rewriteExpr e1
                                 let! e2' = rewriteExpr e2
-                                return BinaryOperation(op, e1', e2')  //, List.append types1 types2
+                                return BinaryOperation(op, e1', e2')
                             }
-//                        | LetBinding(b, e) -> LetBinding(b, rewriteExpr e)
-//                        | Conditional(e1, e2, e3) -> Conditional(rewriteExpr e1, rewriteExpr e2, rewriteExpr e3)
-//                        | FunctionCall (e, b) -> FunctionCall(rewriteExpr e, b)
-//                        | Lambda(p1, p2, e) -> Lambda(p1, p2, rewriteExpr e)
-//                        | Assign(id, e) -> Assign(id, rewriteExpr e)
-//                        | Sequence(es) -> Sequence(es |> List.map rewriteExpr)
-                rewriter expr'
-            let (rewritten, types') = rewriteExpr' methodDef.Body
+                        | LetBinding(b, e) ->
+                            rw {
+                                let! e' = rewriteExpr e
+                                return LetBinding(b, e')
+                            }
+                        | Conditional(e1, e2, e3) -> 
+                            rw {
+                                let! e1' = rewriteExpr e1
+                                let! e2' = rewriteExpr e2
+                                let! e3' = rewriteExpr e3
+                                return Conditional(e1', e2', e3')
+                            }
+                        | FunctionCall (e, b) -> 
+                            rw {
+                                let! e' = rewriteExpr e
+                                return FunctionCall(e', b)
+                            }
+                        | Lambda(p1, p2, e) -> 
+                            rw {
+                                let! e' = rewriteExpr e
+                                return Lambda(p1, p2, e')
+                            }
+                        | Assign(id, e) -> 
+                            rw {
+                                let! e' = rewriteExpr e
+                                return Assign(id, e')
+                            }
+                        | Sequence(es) -> 
+                            rw { 
+                                let wrappers = es |> List.map rewriteExpr
+                                let es' = wrappers |> List.map fst
+                                return Sequence(es')
+                            }
+                rewriter wrapper'
+            let (rewritten, types') = rewriteExpr methodDef.Body
 
             ({ methodDef with Body = rewritten }, List.append types types')
 
@@ -416,11 +453,12 @@ module Compiler =
                         let invokeMethod = typeof<Func<int,int>>.GetMethod("Invoke")
                         ilGen.Emit(OpCodes.Callvirt, invokeMethod)
                     | Lambda(formalParams, capturedParams, e) ->
-                        let (lambdaCtor, invokeMethod) = createLambdaType formalParams capturedParams e
-                        emitNewObj lambdaCtor capturedParams
-                        ilGen.Emit(OpCodes.Ldftn, invokeMethod)
-                        ilGen.Emit(OpCodes.Newobj, typeof<Func<int, int>>.GetConstructor([| typeof<obj>; typeof<IntPtr> |]))
-                        ()
+                        printf "wtf"
+//                        let (lambdaCtor, invokeMethod) = createLambdaType formalParams capturedParams e
+//                        emitNewObj lambdaCtor capturedParams
+//                        ilGen.Emit(OpCodes.Ldftn, invokeMethod)
+//                        ilGen.Emit(OpCodes.Newobj, typeof<Func<int, int>>.GetConstructor([| typeof<obj>; typeof<IntPtr> |]))
+//                        ()
                     | Assign(id, e) ->
                         emitExpr e env
                         emitVariableAssignment id env
@@ -522,11 +560,12 @@ module Compiler =
             ModuleBuilder = moduleBuilder;
             }
 
-        let rewriter = new LambdaReWriter(moduleBuilder, ctx)
+        let rewriter = new Rewriter()
+        let lambdaRewriter = new LambdaRewriter(ctx)
         let expandedTypes = 
             typeDefs 
             |> List.map (fun t ->
-                let nestedTypes = rewriter.AnalyzeType t
+                let nestedTypes = rewriter.RewriteType t lambdaRewriter.Rewriter
                 { t with NestedTypes = (List.append t.NestedTypes nestedTypes)}
                 )
         expandedTypes |> List.iter (fun t -> printf "%A" t)
