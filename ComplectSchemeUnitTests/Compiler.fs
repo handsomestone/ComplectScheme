@@ -16,6 +16,8 @@ module CompilerWrapper =
             Body = expr;
             ReturnType = Some(typeof<int>)
             Parameters = [];
+            Builder = None;
+            IsStatic = true;
         }
         let mainTypeInfo = {
             Name  = "MainClass";
@@ -24,6 +26,7 @@ module CompilerWrapper =
             NestedTypes = [];
             IsNested = false;
             Fields = [];
+            Builder = None;
         }
 
         Compiler.build asmInfo mainTypeInfo

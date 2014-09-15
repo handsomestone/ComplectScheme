@@ -70,27 +70,57 @@ module Compiler =
         | Sequence of Expr list
     and Binding = Identifier * Expr
 
+    type CtorDef = {
+        Builder : ConstructorBuilder option;
+        Body : Expr;
+        Parameters : TypedIdentifier list
+        }
+        with
+        member this.GetBuilder() =
+            match this.Builder with
+                | Some(builder) -> builder
+                | None -> failwith "Failed to get builder for ctor" 
+
     type MethodDef = {
+        Builder : MethodBuilder option;
         Name : string;
         Body : Expr;
         ReturnType : Type option;
         Parameters : TypedIdentifier list
+        IsStatic : bool;
         }
+        with
+        member this.GetBuilder() =
+            match this.Builder with
+                | Some(builder) -> builder
+                | None -> failwithf "Failed to get builder for method %s" this.Name 
 
     type FieldDef = {
+        Builder : FieldBuilder option;
         Name : string;
         Type : Type;
         }
+        with
+        member this.GetBuilder() =
+            match this.Builder with
+                | Some(builder) -> builder
+                | None -> failwithf "Failed to get builder for field %s" this.Name 
 
     type TypeDef = {
+        Builder : TypeBuilder option;
         Name : string;
         Functions : MethodDef list;
-        Ctors : MethodDef list;
+        Ctors : CtorDef list;
         NestedTypes : TypeDef list;
         IsNested : bool;
         Fields : FieldDef list;
         // InheritsFrom?
         }
+        with
+        member this.GetBuilder() =
+            match this.Builder with
+                | Some(builder) -> builder
+                | None -> failwithf "Failed to get builder for type %s" this.Name 
 
     let someOrNull =
         function
@@ -207,12 +237,14 @@ module Compiler =
         let createLambdaType (formalParams : TypedIdentifier list) (capturedParams : TypedIdentifier list) expr =
             let invokeMethod : MethodDef = {
                 Name = "Invoke";
+                Builder = None;
                 Body = expr;  // TODO -- rewrite storage locs?
                 ReturnType = Some(typeof<int>);  // ???
-                Parameters = formalParams
+                Parameters = formalParams;
+                IsStatic = false;
             }
 
-            let capturedFields = capturedParams |> List.map (fun (id, t) -> { Name = id; Type = t })
+            let capturedFields = capturedParams |> List.map (fun (id, t) -> { Name = id; Type = t; Builder = None })
 
             let renamedCtorParams = capturedParams |> List.map(fun (id, t) -> ("_" + id, t))
 
@@ -222,15 +254,15 @@ module Compiler =
                         Expr.Assign(id, Expr.VariableRef("_" + id))
                         ))
 
-            let ctor : MethodDef = {
-                Name = "";
+            let ctor : CtorDef = {
+                Builder = None;
                 Body = ctorExpr;
-                ReturnType = None;
                 Parameters = renamedCtorParams
             }
 
             let lambdaType : TypeDef = {
                 Name = (sprintf "lambda%i" (ctx.SymGen.GetNewSymbol()));
+                Builder = None
                 Functions = [ invokeMethod ];
                 Ctors = [ ctor ];
                 NestedTypes = [];
@@ -329,7 +361,7 @@ module Compiler =
                     ) typeDef.Functions ([], [])
             { typeDef with Functions = methods'; NestedTypes = (List.append typeDef.NestedTypes types') }
         
-    type MethodCompiler(ilGen : ILGenerator, typeBuilder : TypeBuilder, lambdaTypes : TypeBuilder list, ctx : CompilerContext) =
+    type MethodCompiler(ilGen : ILGenerator, typeDef : TypeDef) =
         let emitValue (value : Value) =
             let imm = (PrimitiveTypes.encodeValue value)
             ilGen.Emit(OpCodes.Ldc_I4, imm)
@@ -384,12 +416,15 @@ module Compiler =
                     emitStorageLoad stg
                     emitFieldLoad fi
 
-        let rec emitStorageStore (stg : StorageLoc)  =
+        let rec emitStorageStore (stg : StorageLoc) emitValue  =
             match stg with
-                | LocalStorage local -> emitLocalVariableStore local
-                | ArgumentStorage arg -> emitArgumentStore arg
+                | LocalStorage local ->
+                    emitValue()
+                    emitLocalVariableStore local
+                | ArgumentStorage arg -> failwith "Can't store to argument storage" //emitArgumentStore arg
                 | FieldStorage (stg, fi) -> 
                     emitStorageLoad stg
+                    emitValue()
                     emitFieldStore fi
 
         let emitVariableRef ref (env : Env) =
@@ -398,10 +433,10 @@ module Compiler =
                     emitStorageLoad stg
                 | None -> failwithf "Unable to find binding for identifier %s" ref
 
-        let emitVariableAssignment ref (env : Env) =
+        let emitVariableAssignment ref (env : Env) emitValue =
             match env.FindIdentifier ref with
                 | Some stg ->
-                    emitStorageStore stg
+                    emitStorageStore stg emitValue
                 | None -> failwithf "Unable to find binding for identifier %s" ref
             
         let storeLocalVariable (binding : Binding) : BindingRef =
@@ -466,20 +501,19 @@ module Compiler =
 //                        ()
                     | Closure(typeId, args) ->
                         let lambdaType = 
-                            match lambdaTypes |> List.tryFind (fun t -> t.Name = typeId) with
+                            match typeDef.NestedTypes |> List.tryFind (fun t -> t.Name = typeId) with
                                 | Some(t) -> t
                                 | None -> failwithf "Unable to find referenced lambda type %s" typeId
-                        let ctor = lambdaType.GetConstructor(args |> List.map snd |> List.toArray)
+                        let ctor = lambdaType.Ctors |> Seq.head // (args |> List.map snd |> List.toArray)
                         args |> List.iter (fun (arg, argType) ->
                                 emitVariableRef arg env
                             )
-                        emitNewObj ctor
-                        let invokeMethod = lambdaType.GetMethod("Invoke")
-                        ilGen.Emit(OpCodes.Ldftn, invokeMethod)
+                        emitNewObj (ctor.GetBuilder())
+                        let invokeMethod = lambdaType.Functions |> List.find (fun f -> f.Name = "Invoke")
+                        ilGen.Emit(OpCodes.Ldftn, invokeMethod.GetBuilder())
                         ilGen.Emit(OpCodes.Newobj, typeof<Func<int, int>>.GetConstructor([| typeof<obj>; typeof<IntPtr> |]))
                     | Assign(id, e) ->
-                        emitExpr e env
-                        emitVariableAssignment id env
+                        emitVariableAssignment id env (fun () -> emitExpr e env)
                     | Sequence(exprs) ->
                         exprs |> List.iter (fun e -> emitExpr e env)
             emitExpr expr env
@@ -492,62 +526,87 @@ module Compiler =
                 (typeof<obj>).GetConstructor([||]))
             this.CompileMethod expr env
 
-    let compileMethod (typeBuilder : TypeBuilder) (lambdaTypes : TypeBuilder list) (ctx : CompilerContext) (env : Env) (methodDef : MethodDef) =
+    let compileMethod (typeDef : TypeDef) (env : Env) (methodDef : MethodDef) =
+        let typeBuilder = typeDef.GetBuilder()
+
+        let methodAttrs =
+            if methodDef.IsStatic then
+               MethodAttributes.Public ||| MethodAttributes.Static
+            else
+                MethodAttributes.Public
+
         let methodBuilder = 
             typeBuilder.DefineMethod(
                 methodDef.Name,
-                MethodAttributes.Public ||| MethodAttributes.Static,
+                methodAttrs,
                 (someOrNull methodDef.ReturnType),
                 methodDef.Parameters |> List.map snd |> List.toArray)
 
-        let mcompiler = new MethodCompiler(methodBuilder.GetILGenerator(), typeBuilder, lambdaTypes, ctx)
+        let mcompiler = new MethodCompiler(methodBuilder.GetILGenerator(), typeDef)
 
         let argBindings = methodDef.Parameters |> List.mapi (fun i (id, t) -> (id, StorageLoc.ArgumentStorage(i + 1)))
         let env2 = new Env(Some(env), Some(argBindings))
 
         mcompiler.CompileMethod methodDef.Body env2
 
-    let compileCtor (typeBuilder : TypeBuilder) (lambdaTypes : TypeBuilder list) (ctx : CompilerContext) (env : Env) (ctorDef : MethodDef) =
+        { methodDef with Builder = Some(methodBuilder) }
+
+    let compileCtor (typeDef : TypeDef) (env : Env) (ctorDef : CtorDef) =
+        let typeBuilder = typeDef.GetBuilder()
+            
         let ctorBuilder =
             typeBuilder.DefineConstructor(
                 MethodAttributes.Public,
                 CallingConventions.HasThis,
                 ctorDef.Parameters |> List.map snd |> List.toArray)
         
-        let mcompiler = new MethodCompiler(ctorBuilder.GetILGenerator(), typeBuilder, lambdaTypes, ctx)
+        let mcompiler = new MethodCompiler(ctorBuilder.GetILGenerator(), typeDef)
         
         let argBindings = ctorDef.Parameters |> List.mapi (fun i (id, t) -> (id, StorageLoc.ArgumentStorage(i + 1)))
         let env2 = new Env(Some(env), Some(argBindings))
 
         mcompiler.CompileCtor ctorDef.Body env2
 
-    let compileField (typeBuilder : TypeBuilder) (ctx : CompilerContext) (fieldDef : FieldDef) =
-        typeBuilder.DefineField(
-            fieldDef.Name,
-            fieldDef.Type,
-            FieldAttributes.Public)
+        { ctorDef with Builder = Some(ctorBuilder) }
 
-    let compileTypeMembers (typeBuilder : TypeBuilder) (lambdaTypes : TypeBuilder list) (ctx : CompilerContext) (typeDef : TypeDef) =
-        let fields = typeDef.Fields |> List.map (compileField typeBuilder ctx)
+    let compileField (typeBuilder : TypeBuilder) (fieldDef : FieldDef) =
+        let fieldBuilder =
+            typeBuilder.DefineField(
+                fieldDef.Name,
+                fieldDef.Type,
+                FieldAttributes.Public)
+
+        { fieldDef with Builder = Some(fieldBuilder) }
+
+    let compileTypeMembers (typeDef : TypeDef) =
+        let typeBuilder = typeDef.GetBuilder()
+
+        let fieldDefs = typeDef.Fields |> List.map (compileField typeBuilder)
         let fieldBindings = 
-            fields 
-            |> List.map (fun field -> 
-                (field.Name, StorageLoc.FieldStorage(StorageLoc.ArgumentStorage(0), field))
+            fieldDefs
+            |> List.map (fun fieldDef -> 
+                let fieldBuilder = fieldDef.GetBuilder()
+                (fieldDef.Name, StorageLoc.FieldStorage(StorageLoc.ArgumentStorage(0), fieldBuilder))
                 )
 
         let env = new Env(None, Some(fieldBindings))
-        typeDef.Functions |> List.iter (compileMethod typeBuilder lambdaTypes ctx env)
-        typeDef.Ctors |> List.iter (compileCtor typeBuilder lambdaTypes ctx env)
+        { typeDef with
+            Functions = typeDef.Functions |> List.map (compileMethod typeDef env)
+            Ctors = typeDef.Ctors |> List.map (compileCtor typeDef env)
+        }
         
-    let compileNestedType (outerTypeBuilder : TypeBuilder) (ctx : CompilerContext) (typeDef : TypeDef) =
+    let compileNestedType (outerTypeBuilder : TypeBuilder) (typeDef : TypeDef) =
         let innerTypeBuilder =
             outerTypeBuilder.DefineNestedType(
                 typeDef.Name,
                 TypeAttributes.Class ||| TypeAttributes.NestedPublic)
 
-        compileTypeMembers innerTypeBuilder [] ctx typeDef
+        let typeDef' =
+            { typeDef with
+                Builder = Some(innerTypeBuilder);
+            }
 
-        innerTypeBuilder
+        compileTypeMembers typeDef'
 
     let compileType (moduleBuilder : ModuleBuilder) (ctx : CompilerContext) (typeDef : TypeDef) =
         let typeBuilder =
@@ -555,15 +614,20 @@ module Compiler =
                 typeDef.Name,
                 TypeAttributes.Class ||| TypeAttributes.Public)
 
-        let lambdaTypes = 
-            typeDef.NestedTypes
-            |> List.map (fun inner -> compileNestedType typeBuilder ctx inner)
+        let typeDef' = 
+            { typeDef with
+                Builder = Some(typeBuilder);
+                NestedTypes = typeDef.NestedTypes |> List.map (fun inner -> compileNestedType typeBuilder inner)
+            }
 
-        compileTypeMembers typeBuilder lambdaTypes ctx typeDef
+        let typeDef' = compileTypeMembers typeDef'
         // Note the outer type needs to be "created" before the nested types
         let createdType = typeBuilder.CreateType()
 
-        lambdaTypes |> List.iter (fun t -> t.CreateType() |> ignore)
+        typeDef'.NestedTypes |> List.iter (fun t -> 
+            match t.Builder with
+                | Some(builder) -> builder.CreateType() |> ignore
+                | None -> failwithf "Failed to finalize nested type %s" t.Name)
         
         createdType
         
@@ -640,6 +704,8 @@ module Compiler =
             Body = mainExpr;
             ReturnType = Some(typeof<int>);
             Parameters = [ ("args", typeof<string>.MakeArrayType()) ];
+            Builder = None;
+            IsStatic = true;
         }
         let mainTypeInfo = {
             Name  = "MainClass";
@@ -648,6 +714,7 @@ module Compiler =
             NestedTypes = [];
             IsNested = false;
             Fields = [];
+            Builder = None;
         }
 
         let mainType = build asmInfo mainTypeInfo
