@@ -65,6 +65,7 @@ module Compiler =
         | Conditional of Expr * Expr * Expr
         | FunctionCall of Expr * Binding list
         | Lambda of Identifier list * Identifier list * Expr
+        | Closure of Identifier * TypedIdentifier list
         | Assign of Identifier * Expr
         | Sequence of Expr list
     and Binding = Identifier * Expr
@@ -243,17 +244,18 @@ module Compiler =
             ids |> List.map (fun id -> (id, typeof<int>))
 
         member this.Rewriter (wrapper : RewriterWrapper) =
-            let (expr, _) = wrapper
+            let (expr, types) = wrapper
             match expr with
                 | Lambda(formalParams, capturedParams, e) ->
-                    //Lambda(formalParams, capturedParams, e)
-                    let closure = createLambdaType (defaultTypes formalParams) (defaultTypes capturedParams) e
+                    let formalParams' = (defaultTypes formalParams)
+                    let capturedParams' = (defaultTypes capturedParams)
+                    let closure = createLambdaType formalParams' capturedParams' e
                     // TODO -- need to replace the Lambda expr with a new instance of lambda
-                    (e, [ closure ])
-                | other -> (other, [])
+                    (Expr.Closure(closure.Name, capturedParams'), closure :: types)
+                | other -> (other, types)
 
     type Rewriter() =
-        member this.RewriteMethod (rewriter : (RewriterWrapper -> RewriterWrapper)) (types : TypeDef list) (methodDef : MethodDef) =
+        member this.RewriteMethod (rewriter : (RewriterWrapper -> RewriterWrapper)) (methodDef : MethodDef) =
             let rw = new RewriterBuilder()
             let rec rewriteExpr expr =
                 let wrapper' =
@@ -299,6 +301,10 @@ module Compiler =
                                 let! e' = rewriteExpr e
                                 return Lambda(p1, p2, e')
                             }
+                        | Closure(id, p) ->
+                            rw {
+                                return Closure(id, p)
+                            }
                         | Assign(id, e) -> 
                             rw {
                                 let! e' = rewriteExpr e
@@ -313,18 +319,17 @@ module Compiler =
                 rewriter wrapper'
             let (rewritten, types') = rewriteExpr methodDef.Body
 
-            ({ methodDef with Body = rewritten }, List.append types types')
+            ({ methodDef with Body = rewritten }, types')
 
-        member this.RewriteType (typeDef : TypeDef) rewriter =
+        member this.RewriteType rewriter (typeDef : TypeDef) =
             let (methods', types') = 
                 List.foldBack (fun m (ms, ts) -> 
-                    let (rewritten, newTypes) = this.RewriteMethod rewriter [ typeDef ] m
+                    let (rewritten, newTypes) = this.RewriteMethod rewriter m
                     (rewritten :: ms, List.append newTypes ts)
                     ) typeDef.Functions ([], [])
-            let typeDef' = { typeDef with Functions = methods'}
-            typeDef' :: types'
+            { typeDef with Functions = methods'; NestedTypes = (List.append typeDef.NestedTypes types') }
         
-    type MethodCompiler(ilGen : ILGenerator, typeBuilder : TypeBuilder, ctx : CompilerContext) =
+    type MethodCompiler(ilGen : ILGenerator, typeBuilder : TypeBuilder, lambdaTypes : TypeBuilder list, ctx : CompilerContext) =
         let emitValue (value : Value) =
             let imm = (PrimitiveTypes.encodeValue value)
             ilGen.Emit(OpCodes.Ldc_I4, imm)
@@ -407,7 +412,7 @@ module Compiler =
             ilGen.Emit(OpCodes.Stloc, localBuilder)
             (id, stgLoc)
 
-        let emitNewObj (ctor : ConstructorInfo) (capturedParams : Identifier list) =
+        let emitNewObj (ctor : ConstructorInfo) =
             ilGen.Emit(OpCodes.Newobj, ctor)
             
         member this.CompileMethod expr env =
@@ -459,6 +464,19 @@ module Compiler =
 //                        ilGen.Emit(OpCodes.Ldftn, invokeMethod)
 //                        ilGen.Emit(OpCodes.Newobj, typeof<Func<int, int>>.GetConstructor([| typeof<obj>; typeof<IntPtr> |]))
 //                        ()
+                    | Closure(typeId, args) ->
+                        let lambdaType = 
+                            match lambdaTypes |> List.tryFind (fun t -> t.Name = typeId) with
+                                | Some(t) -> t
+                                | None -> failwithf "Unable to find referenced lambda type %s" typeId
+                        let ctor = lambdaType.GetConstructor(args |> List.map snd |> List.toArray)
+                        args |> List.iter (fun (arg, argType) ->
+                                emitVariableRef arg env
+                            )
+                        emitNewObj ctor
+                        let invokeMethod = lambdaType.GetMethod("Invoke")
+                        ilGen.Emit(OpCodes.Ldftn, invokeMethod)
+                        ilGen.Emit(OpCodes.Newobj, typeof<Func<int, int>>.GetConstructor([| typeof<obj>; typeof<IntPtr> |]))
                     | Assign(id, e) ->
                         emitExpr e env
                         emitVariableAssignment id env
@@ -474,7 +492,7 @@ module Compiler =
                 (typeof<obj>).GetConstructor([||]))
             this.CompileMethod expr env
 
-    let compileMethod (typeBuilder : TypeBuilder) (ctx : CompilerContext) (env : Env) (methodDef : MethodDef) =
+    let compileMethod (typeBuilder : TypeBuilder) (lambdaTypes : TypeBuilder list) (ctx : CompilerContext) (env : Env) (methodDef : MethodDef) =
         let methodBuilder = 
             typeBuilder.DefineMethod(
                 methodDef.Name,
@@ -482,21 +500,21 @@ module Compiler =
                 (someOrNull methodDef.ReturnType),
                 methodDef.Parameters |> List.map snd |> List.toArray)
 
-        let mcompiler = new MethodCompiler(methodBuilder.GetILGenerator(), typeBuilder, ctx)
+        let mcompiler = new MethodCompiler(methodBuilder.GetILGenerator(), typeBuilder, lambdaTypes, ctx)
 
         let argBindings = methodDef.Parameters |> List.mapi (fun i (id, t) -> (id, StorageLoc.ArgumentStorage(i + 1)))
         let env2 = new Env(Some(env), Some(argBindings))
 
         mcompiler.CompileMethod methodDef.Body env2
 
-    let compileCtor (typeBuilder : TypeBuilder) (ctx : CompilerContext) (env : Env) (ctorDef : MethodDef) =
+    let compileCtor (typeBuilder : TypeBuilder) (lambdaTypes : TypeBuilder list) (ctx : CompilerContext) (env : Env) (ctorDef : MethodDef) =
         let ctorBuilder =
             typeBuilder.DefineConstructor(
                 MethodAttributes.Public,
                 CallingConventions.HasThis,
                 ctorDef.Parameters |> List.map snd |> List.toArray)
         
-        let mcompiler = new MethodCompiler(ctorBuilder.GetILGenerator(), typeBuilder, ctx)
+        let mcompiler = new MethodCompiler(ctorBuilder.GetILGenerator(), typeBuilder, lambdaTypes, ctx)
         
         let argBindings = ctorDef.Parameters |> List.mapi (fun i (id, t) -> (id, StorageLoc.ArgumentStorage(i + 1)))
         let env2 = new Env(Some(env), Some(argBindings))
@@ -509,7 +527,7 @@ module Compiler =
             fieldDef.Type,
             FieldAttributes.Public)
 
-    let compileTypeMembers (typeBuilder : TypeBuilder) (ctx : CompilerContext) (typeDef : TypeDef) =
+    let compileTypeMembers (typeBuilder : TypeBuilder) (lambdaTypes : TypeBuilder list) (ctx : CompilerContext) (typeDef : TypeDef) =
         let fields = typeDef.Fields |> List.map (compileField typeBuilder ctx)
         let fieldBindings = 
             fields 
@@ -518,8 +536,8 @@ module Compiler =
                 )
 
         let env = new Env(None, Some(fieldBindings))
-        typeDef.Functions |> List.iter (compileMethod typeBuilder ctx env)
-        typeDef.Ctors |> List.iter (compileCtor typeBuilder ctx env)
+        typeDef.Functions |> List.iter (compileMethod typeBuilder lambdaTypes ctx env)
+        typeDef.Ctors |> List.iter (compileCtor typeBuilder lambdaTypes ctx env)
         
     let compileNestedType (outerTypeBuilder : TypeBuilder) (ctx : CompilerContext) (typeDef : TypeDef) =
         let innerTypeBuilder =
@@ -527,7 +545,7 @@ module Compiler =
                 typeDef.Name,
                 TypeAttributes.Class ||| TypeAttributes.NestedPublic)
 
-        compileTypeMembers innerTypeBuilder ctx typeDef
+        compileTypeMembers innerTypeBuilder [] ctx typeDef
 
         innerTypeBuilder
 
@@ -537,13 +555,15 @@ module Compiler =
                 typeDef.Name,
                 TypeAttributes.Class ||| TypeAttributes.Public)
 
-        compileTypeMembers typeBuilder ctx typeDef
+        let lambdaTypes = 
+            typeDef.NestedTypes
+            |> List.map (fun inner -> compileNestedType typeBuilder ctx inner)
+
+        compileTypeMembers typeBuilder lambdaTypes ctx typeDef
         // Note the outer type needs to be "created" before the nested types
         let createdType = typeBuilder.CreateType()
 
-        typeDef.NestedTypes
-            |> List.map (fun inner -> compileNestedType typeBuilder ctx inner)
-            |> List.iter (fun t -> t.CreateType() |> ignore)
+        lambdaTypes |> List.iter (fun t -> t.CreateType() |> ignore)
         
         createdType
         
@@ -562,12 +582,7 @@ module Compiler =
 
         let rewriter = new Rewriter()
         let lambdaRewriter = new LambdaRewriter(ctx)
-        let expandedTypes = 
-            typeDefs 
-            |> List.map (fun t ->
-                let nestedTypes = rewriter.RewriteType t lambdaRewriter.Rewriter
-                { t with NestedTypes = (List.append t.NestedTypes nestedTypes)}
-                )
+        let expandedTypes = typeDefs |> List.map (rewriter.RewriteType lambdaRewriter.Rewriter)
         expandedTypes |> List.iter (fun t -> printf "%A" t)
 
         let createdTypes = expandedTypes |> List.map (compileType moduleBuilder ctx)
