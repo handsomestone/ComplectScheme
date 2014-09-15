@@ -191,6 +191,17 @@ module Compiler =
         let CompareEq (ilGen : ILGenerator) =
             ilGen.Emit(OpCodes.Ceq)
 
+    type RewriterWrapper = (Expr * TypeDef list)
+
+    type RewriterBuilder() =
+        member this.Bind(x : RewriterWrapper, f : (Expr -> RewriterWrapper)) : RewriterWrapper =
+            let (expr, types) = x
+            let (expr', types') = f expr
+            (expr', List.append types types')
+
+        member this.Return(x) : RewriterWrapper =
+            (x, [])
+
     type LambdaReWriter(moduleBuilder : ModuleBuilder, ctx : CompilerContext) =
         let createLambdaType (formalParams : TypedIdentifier list) (capturedParams : TypedIdentifier list) expr =
             let invokeMethod : MethodDef = {
@@ -200,18 +211,21 @@ module Compiler =
                 Parameters = formalParams
             }
 
-            let capturedFields = capturedParams |> List.map (fun (id, t) -> { Name = "_" + id; Type = t })
+            let capturedFields = capturedParams |> List.map (fun (id, t) -> { Name = id; Type = t })
+
+            let renamedCtorParams = capturedParams |> List.map(fun (id, t) -> ("_" + id, t))
+
             let ctorExpr = 
                 Expr.Sequence(
                     capturedParams |> List.map (fun (id, t) ->
-                        Expr.Assign("_" + id, Expr.VariableRef(id))
+                        Expr.Assign(id, Expr.VariableRef("_" + id))
                         ))
 
             let ctor : MethodDef = {
                 Name = "";
                 Body = ctorExpr;
                 ReturnType = None;
-                Parameters = capturedParams
+                Parameters = renamedCtorParams
             }
 
             let lambdaType : TypeDef = {
@@ -228,25 +242,50 @@ module Compiler =
         let defaultTypes (ids : Identifier list) =
             ids |> List.map (fun id -> (id, typeof<int>))
 
-        member this.AnalyzeMethod (methodDef : MethodDef) : TypeDef list =
-            let rec analyzeExpr (expr : Expr) : TypeDef list =
-                match expr with
-                    | UnaryOperation(_, e) -> analyzeExpr e
-                    | BinaryOperation(_, e1, e2) -> List.append (analyzeExpr e1) (analyzeExpr e2)
-                    | LetBinding(_, e) -> analyzeExpr e
-                    | Conditional(e1, e2, e3) -> List.concat [(analyzeExpr e1); (analyzeExpr e2); (analyzeExpr e3)]
-                    | FunctionCall (e, _) -> analyzeExpr e
-                    | Lambda(formalParams, capturedParams, e) ->
-                        let closures = analyzeExpr e
-                        let closure = createLambdaType (defaultTypes formalParams) (defaultTypes capturedParams) e
-                        closure :: closures
-                    | Assign(_, e) -> analyzeExpr e
-                    | Sequence(es) -> es |> List.map analyzeExpr |> List.concat
-                    | _ -> []
-            analyzeExpr methodDef.Body
+        let lambdaRewriter (wrapper : RewriterWrapper) =
+            let (expr, _) = wrapper
+            match expr with
+                | Lambda(formalParams, capturedParams, e) ->
+                    //Lambda(formalParams, capturedParams, e)
+                    let closure = createLambdaType (defaultTypes formalParams) (defaultTypes capturedParams) e
+                    // TODO -- need to replace the Lambda expr with a new instance of lambda
+                    (e, [ closure ])
+                | other -> (other, [])
 
-        member this.AnalyzeType (typeDef : TypeDef) : TypeDef list =
-            typeDef.Functions |> List.collect this.AnalyzeMethod
+        member this.RewriteMethod (rewriter : (Expr * TypeDef list -> Expr * TypeDef list)) (types : TypeDef list) (methodDef : MethodDef) =
+            let rw = new RewriterBuilder()
+            let rec rewriteExpr' (expr : Expr) : (Expr * TypeDef list) =
+                let rewriteExpr = rewriteExpr'
+                let expr' =
+                    match expr with
+//                        | Immediate(v) -> Immediate(v)
+//                        | VariableRef(ref) -> VariableRef(ref)
+//                        | UnaryOperation(op, e) -> UnaryOperation(op, rewriteExpr e)
+                        | BinaryOperation(op, e1, e2) -> 
+                            rw {
+                                let! e1' = rewriteExpr e1
+                                let! e2' = rewriteExpr e2
+                                return BinaryOperation(op, e1', e2')  //, List.append types1 types2
+                            }
+//                        | LetBinding(b, e) -> LetBinding(b, rewriteExpr e)
+//                        | Conditional(e1, e2, e3) -> Conditional(rewriteExpr e1, rewriteExpr e2, rewriteExpr e3)
+//                        | FunctionCall (e, b) -> FunctionCall(rewriteExpr e, b)
+//                        | Lambda(p1, p2, e) -> Lambda(p1, p2, rewriteExpr e)
+//                        | Assign(id, e) -> Assign(id, rewriteExpr e)
+//                        | Sequence(es) -> Sequence(es |> List.map rewriteExpr)
+                rewriter expr'
+            let (rewritten, types') = rewriteExpr' methodDef.Body
+
+            ({ methodDef with Body = rewritten }, List.append types types')
+
+        member this.RewriteType (typeDef : TypeDef) rewriter =
+            let (methods', types') = 
+                List.foldBack (fun m (ms, ts) -> 
+                    let (rewritten, newTypes) = this.RewriteMethod rewriter [ typeDef ] m
+                    (rewritten :: ms, List.append newTypes ts)
+                    ) typeDef.Functions ([], [])
+            let typeDef' = { typeDef with Functions = methods'}
+            typeDef' :: types'
         
     type MethodCompiler(ilGen : ILGenerator, typeBuilder : TypeBuilder, ctx : CompilerContext) =
         let emitValue (value : Value) =
@@ -377,10 +416,10 @@ module Compiler =
                         let invokeMethod = typeof<Func<int,int>>.GetMethod("Invoke")
                         ilGen.Emit(OpCodes.Callvirt, invokeMethod)
                     | Lambda(formalParams, capturedParams, e) ->
-//                        let (lambdaCtor, invokeMethod) = createLambdaType formalParams capturedParams e
-//                        emitNewObj lambdaCtor capturedParams
-//                        ilGen.Emit(OpCodes.Ldftn, invokeMethod)
-//                        ilGen.Emit(OpCodes.Newobj, typeof<Func<int, int>>.GetConstructor([| typeof<obj>; typeof<IntPtr> |]))
+                        let (lambdaCtor, invokeMethod) = createLambdaType formalParams capturedParams e
+                        emitNewObj lambdaCtor capturedParams
+                        ilGen.Emit(OpCodes.Ldftn, invokeMethod)
+                        ilGen.Emit(OpCodes.Newobj, typeof<Func<int, int>>.GetConstructor([| typeof<obj>; typeof<IntPtr> |]))
                         ()
                     | Assign(id, e) ->
                         emitExpr e env
@@ -410,7 +449,7 @@ module Compiler =
         let argBindings = methodDef.Parameters |> List.mapi (fun i (id, t) -> (id, StorageLoc.ArgumentStorage(i + 1)))
         let env2 = new Env(Some(env), Some(argBindings))
 
-        mcompiler.CompileMethod methodDef.Body env
+        mcompiler.CompileMethod methodDef.Body env2
 
     let compileCtor (typeBuilder : TypeBuilder) (ctx : CompilerContext) (env : Env) (ctorDef : MethodDef) =
         let ctorBuilder =
@@ -424,7 +463,7 @@ module Compiler =
         let argBindings = ctorDef.Parameters |> List.mapi (fun i (id, t) -> (id, StorageLoc.ArgumentStorage(i + 1)))
         let env2 = new Env(Some(env), Some(argBindings))
 
-        mcompiler.CompileCtor ctorDef.Body env
+        mcompiler.CompileCtor ctorDef.Body env2
 
     let compileField (typeBuilder : TypeBuilder) (ctx : CompilerContext) (fieldDef : FieldDef) =
         typeBuilder.DefineField(
@@ -484,7 +523,14 @@ module Compiler =
             }
 
         let rewriter = new LambdaReWriter(moduleBuilder, ctx)
-        let expandedTypes = typeDefs |> List.collect rewriter.AnalyzeType
+        let expandedTypes = 
+            typeDefs 
+            |> List.map (fun t ->
+                let nestedTypes = rewriter.AnalyzeType t
+                { t with NestedTypes = (List.append t.NestedTypes nestedTypes)}
+                )
+        expandedTypes |> List.iter (fun t -> printf "%A" t)
+
         let createdTypes = expandedTypes |> List.map (compileType moduleBuilder ctx)
         
         let mainMethod = 
