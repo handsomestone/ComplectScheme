@@ -153,18 +153,13 @@ module Compiler =
                         let invokeMethod = typeof<Func<int,int>>.GetMethod("Invoke")
                         ilGen.Emit(OpCodes.Callvirt, invokeMethod)
                     | Lambda(formalParams, capturedParams, e) ->
-                        printf "wtf"
-//                        let (lambdaCtor, invokeMethod) = createLambdaType formalParams capturedParams e
-//                        emitNewObj lambdaCtor capturedParams
-//                        ilGen.Emit(OpCodes.Ldftn, invokeMethod)
-//                        ilGen.Emit(OpCodes.Newobj, typeof<Func<int, int>>.GetConstructor([| typeof<obj>; typeof<IntPtr> |]))
-//                        ()
+                        failwithf "Encountered unexpected Lambda expression without closure"
                     | Closure(typeId, args) ->
                         let lambdaType = 
                             match typeDef.NestedTypes |> List.tryFind (fun t -> t.Name = typeId) with
                                 | Some(t) -> t
                                 | None -> failwithf "Unable to find referenced lambda type %s" typeId
-                        let ctor = lambdaType.Ctors |> Seq.head // (args |> List.map snd |> List.toArray)
+                        let ctor = lambdaType.Ctors |> Seq.exactlyOne
                         args |> List.iter (fun (arg, argType) ->
                                 emitVariableRef arg env
                             )
