@@ -11,7 +11,6 @@
 
     type Identifier = string
     type TypedIdentifier = Identifier * Type
-    //type FunctionId = string * Type
 
     type StorageLoc =
         | LocalStorage of int

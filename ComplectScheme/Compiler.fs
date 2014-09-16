@@ -13,15 +13,27 @@ module Compiler =
     open Rewriting
 
     type Env(env : Env option, bindings : BindingRef list option) =
-        let map = new Map<Identifier, StorageLoc>(match bindings with Some(b) -> (Seq.ofList b) | None -> Seq.empty)
+        member private this.map = new Map<Identifier, StorageLoc>(match bindings with Some(b) -> (Seq.ofList b) | None -> Seq.empty)
+
+        member private this.merge (other : BindingRef list) =
+            match bindings with
+                | Some(b) -> List.append other b
+                | None -> other
 
         member this.FindIdentifier id =
-            match (map |> Map.tryFind id), env with
+            match (this.map |> Map.tryFind id), env with
                 | Some stg, _-> Some stg
                 | None, Some e -> e.FindIdentifier id
                 | None, None -> None
 
-    type MethodCompiler(ilGen : ILGenerator, typeDef : TypeDef) =
+        member this.MergeWith (other : Env) =
+            let combined =
+                match bindings with
+                    | Some(b) -> other.merge b
+                    | None -> other.merge []
+            new Env(env, Some(combined))
+
+    type ExpressionCompiler(ilGen : ILGenerator, typeDef : TypeDef) =
         let emitValue (value : Value) =
             let imm = (PrimitiveTypes.encodeValue value)
             ilGen.Emit(OpCodes.Ldc_I4, imm)
@@ -110,7 +122,7 @@ module Compiler =
         let emitNewObj (ctor : ConstructorInfo) =
             ilGen.Emit(OpCodes.Newobj, ctor)
             
-        member this.CompileMethod expr env =
+        member this.CompileExpression expr env =
             let rec emitExpr expr env =
                 match expr with
                     | Immediate(i) -> emitValue i
@@ -179,113 +191,158 @@ module Compiler =
             ilGen.Emit(
                 OpCodes.Call,
                 (typeof<obj>).GetConstructor([||]))
-            this.CompileMethod expr env
+            this.CompileExpression expr env
 
-    let compileMethod (typeDef : TypeDef) (env : Env) (methodDef : MethodDef) =
-        let typeBuilder = typeDef.GetBuilder()
 
-        let methodAttrs =
-            if methodDef.IsStatic then
-               MethodAttributes.Public ||| MethodAttributes.Static
-            else
-                MethodAttributes.Public
+    type TypeCompilerWrapper = TypeDef * Env
+    
+    type TypeCompilerBuilder(wrapper) =
+        member this.Bind(x, f) =
+            f x wrapper
+        
+        member this.Return(x) = x
+         
+    (* TODO -- need to figure out exactly the sequence of declaring / defining types and members here should be
+     * e.g.
+     * 1) Declare outer type
+     * 2) Declare nested types
+     * 3) Define outer fields
+     * 4) Define outer methods
+     * 5) Define nested fields
+     * 6) Define nested methods
+     *) 
+    module TypeCompiler =
+        let DefineField (typeDef : TypeDef) (fieldDef : FieldDef) : FieldDef =
+            let fieldBuilder =
+                typeDef.GetBuilder().DefineField(
+                    fieldDef.Name,
+                    fieldDef.Type,
+                    FieldAttributes.Public)
 
-        let methodBuilder = 
-            typeBuilder.DefineMethod(
-                methodDef.Name,
-                methodAttrs,
-                (someOrNull methodDef.ReturnType),
-                methodDef.Parameters |> List.map snd |> List.toArray)
+            { fieldDef with Builder = Some(fieldBuilder) }
 
-        let mcompiler = new MethodCompiler(methodBuilder.GetILGenerator(), typeDef)
+        let DefineMethod (typeDef : TypeDef, env : Env) (methodDef : MethodDef) =
+            let methodAttrs =
+                if methodDef.IsStatic then
+                   MethodAttributes.Public ||| MethodAttributes.Static
+                else
+                    MethodAttributes.Public
 
-        let argBindings = methodDef.Parameters |> List.mapi (fun i (id, t) -> (id, StorageLoc.ArgumentStorage(i + 1)))
-        let env2 = new Env(Some(env), Some(argBindings))
+            let methodBuilder = 
+                typeDef.GetBuilder().DefineMethod(
+                    methodDef.Name,
+                    methodAttrs,
+                    (someOrNull methodDef.ReturnType),
+                    methodDef.Parameters |> List.map snd |> List.toArray)
 
-        mcompiler.CompileMethod methodDef.Body env2
+            let exprCompiler = new ExpressionCompiler(methodBuilder.GetILGenerator(), typeDef)
 
-        { methodDef with Builder = Some(methodBuilder) }
+            let argBindings = methodDef.Parameters |> List.mapi (fun i (id, _) -> (id, StorageLoc.ArgumentStorage(i + 1)))
+            let env' = new Env(Some(env), Some(argBindings))
 
-    let compileCtor (typeDef : TypeDef) (env : Env) (ctorDef : CtorDef) =
-        let typeBuilder = typeDef.GetBuilder()
+            exprCompiler.CompileExpression methodDef.Body env'
+
+            { methodDef with Builder = Some(methodBuilder) }
+
+        let DefineMethods (typeDef : TypeDef, env : Env) =
+            let typeDef' =
+                { typeDef with
+                    Functions = typeDef.Functions |> List.map (DefineMethod (typeDef, env))
+                }
+
+            (typeDef', env)
+
+        let DefineCtor (typeDef : TypeDef, env : Env) (ctorDef : CtorDef) =
+            let ctorBuilder =
+                typeDef.GetBuilder().DefineConstructor(
+                    MethodAttributes.Public,
+                    CallingConventions.HasThis,
+                    ctorDef.Parameters |> List.map snd |> List.toArray)
+        
+            let exprCompiler = new ExpressionCompiler(ctorBuilder.GetILGenerator(), typeDef)
+        
+            let argBindings = ctorDef.Parameters |> List.mapi (fun i (id, _) -> (id, StorageLoc.ArgumentStorage(i + 1)))
+            let env' = new Env(Some(env), Some(argBindings))
+
+            exprCompiler.CompileCtor ctorDef.Body env'
+
+            { ctorDef with Builder = Some(ctorBuilder) }
+
+        let DefineCtors (typeDef : TypeDef, env : Env) =
+            let typeDef' =
+                { typeDef with
+                    Ctors = typeDef.Ctors |> List.map (DefineCtor (typeDef, env))
+                }
+
+            (typeDef', env)
+
+        let DefineFields (typeDef : TypeDef, env : Env) =
+            let fieldDefs = typeDef.Fields |> List.map (DefineField typeDef)
+            let fieldBindings = 
+                fieldDefs
+                |> List.map (fun fieldDef -> 
+                    let fieldBuilder = fieldDef.GetBuilder()
+                    (fieldDef.Name, StorageLoc.FieldStorage(StorageLoc.ArgumentStorage(0), fieldBuilder))
+                    )
+
+            let env' = new Env(Some(env), Some(fieldBindings))
+
+            (typeDef, env')
+
+        let DefineMembers (typeDef : TypeDef, env : Env) =
+            (typeDef, env)
+            |> DefineFields
+            |> DefineMethods
+            |> DefineCtors
             
-        let ctorBuilder =
-            typeBuilder.DefineConstructor(
-                MethodAttributes.Public,
-                CallingConventions.HasThis,
-                ctorDef.Parameters |> List.map snd |> List.toArray)
-        
-        let mcompiler = new MethodCompiler(ctorBuilder.GetILGenerator(), typeDef)
-        
-        let argBindings = ctorDef.Parameters |> List.mapi (fun i (id, t) -> (id, StorageLoc.ArgumentStorage(i + 1)))
-        let env2 = new Env(Some(env), Some(argBindings))
+        let rec DefineNestedType (outerTypeBuilder : TypeBuilder) (typeDef : TypeDef, env : Env) =
+            let innerTypeBuilder =
+                outerTypeBuilder.DefineNestedType(
+                    typeDef.Name,
+                    TypeAttributes.Class ||| TypeAttributes.NestedPublic)
 
-        mcompiler.CompileCtor ctorDef.Body env2
+            ({ typeDef with Builder = Some(innerTypeBuilder) }, env)
+            |> DefineNestedTypes innerTypeBuilder
+            |> DefineMembers
+            // NOTE -- it is the outer type compiler's responsibility to "create" this type
 
-        { ctorDef with Builder = Some(ctorBuilder) }
+        and DefineNestedTypes (typeBuilder : TypeBuilder) (typeDef : TypeDef, env : Env) =
+            let nestedTypes =
+                typeDef.NestedTypes 
+                |> List.map (fun inner -> 
+                    (inner, env)
+                    |> DefineNestedType typeBuilder 
+                    |> fst)
 
-    let compileField (typeBuilder : TypeBuilder) (fieldDef : FieldDef) =
-        let fieldBuilder =
-            typeBuilder.DefineField(
-                fieldDef.Name,
-                fieldDef.Type,
-                FieldAttributes.Public)
+            ({ typeDef with NestedTypes = nestedTypes }, env)
 
-        { fieldDef with Builder = Some(fieldBuilder) }
+        let DefineType (moduleBuilder : ModuleBuilder) (typeDef, env : Env) =
+            let typeBuilder =
+                moduleBuilder.DefineType(
+                    typeDef.Name,
+                    TypeAttributes.Class ||| TypeAttributes.Public)
 
-    let compileTypeMembers (typeDef : TypeDef) =
-        let typeBuilder = typeDef.GetBuilder()
+            ({ typeDef with TypeDef.Builder = Some(typeBuilder); }, env)
+            |> DefineNestedTypes typeBuilder
+            |> DefineMembers
 
-        let fieldDefs = typeDef.Fields |> List.map (compileField typeBuilder)
-        let fieldBindings = 
-            fieldDefs
-            |> List.map (fun fieldDef -> 
-                let fieldBuilder = fieldDef.GetBuilder()
-                (fieldDef.Name, StorageLoc.FieldStorage(StorageLoc.ArgumentStorage(0), fieldBuilder))
+        let CompileType (moduleBuilder : ModuleBuilder) (typeDef : TypeDef, env : Env) =
+            let (typeDef', env') = (typeDef, env) |> DefineType moduleBuilder
+
+            // Note the outer type needs to be "created" before the nested types
+            let createdType = typeDef'.GetBuilder().CreateType()
+
+            let nestedTypes =
+                typeDef'.NestedTypes |> List.map (fun nestedType -> 
+                    let nestedTypeBuilder = nestedType.GetBuilder()
+                    //let (nestedType', e') = DefineNestedType (typeDef', env)
+                    (nestedTypeBuilder.CreateType(), nestedType)
                 )
+                |> List.unzip
 
-        let env = new Env(None, Some(fieldBindings))
-        { typeDef with
-            Functions = typeDef.Functions |> List.map (compileMethod typeDef env)
-            Ctors = typeDef.Ctors |> List.map (compileCtor typeDef env)
-        }
-        
-    let compileNestedType (outerTypeBuilder : TypeBuilder) (typeDef : TypeDef) =
-        let innerTypeBuilder =
-            outerTypeBuilder.DefineNestedType(
-                typeDef.Name,
-                TypeAttributes.Class ||| TypeAttributes.NestedPublic)
+            (typeDef', createdType :: (fst nestedTypes))
+//            ({ typeDef' with NestedTypes = snd nestedTypes}, createdType :: (fst nestedTypes))
 
-        let typeDef' =
-            { typeDef with
-                Builder = Some(innerTypeBuilder);
-            }
-
-        compileTypeMembers typeDef'
-
-    let compileType (moduleBuilder : ModuleBuilder) (ctx : CompilerContext) (typeDef : TypeDef) =
-        let typeBuilder =
-            moduleBuilder.DefineType(
-                typeDef.Name,
-                TypeAttributes.Class ||| TypeAttributes.Public)
-
-        let typeDef' = 
-            { typeDef with
-                Builder = Some(typeBuilder);
-                NestedTypes = typeDef.NestedTypes |> List.map (fun inner -> compileNestedType typeBuilder inner)
-            }
-
-        let typeDef' = compileTypeMembers typeDef'
-        // Note the outer type needs to be "created" before the nested types
-        let createdType = typeBuilder.CreateType()
-
-        typeDef'.NestedTypes |> List.iter (fun t -> 
-            match t.Builder with
-                | Some(builder) -> builder.CreateType() |> ignore
-                | None -> failwithf "Failed to finalize nested type %s" t.Name)
-        
-        createdType
-        
     let compile asmInfo outFile (typeDefs : TypeDef list) (entryPoint : string) (ctx : CompilerContext) =
         let domain = AppDomain.CurrentDomain
         let asmName = new AssemblyName(asmInfo.AssemblyName)
@@ -304,7 +361,13 @@ module Compiler =
         let expandedTypes = typeDefs |> List.map (rewriter.RewriteType lambdaRewriter.Rewriter)
         expandedTypes |> List.iter (fun t -> printf "%A" t)
 
-        let createdTypes = expandedTypes |> List.map (compileType moduleBuilder ctx)
+        let env = new Env(None, None)
+        let createdTypes = 
+            expandedTypes 
+            |> List.collect (fun t ->
+                let (_, createdTypes) = TypeCompiler.CompileType moduleBuilder (t, env)
+                createdTypes
+                )
         
         let mainMethod = 
             createdTypes 
