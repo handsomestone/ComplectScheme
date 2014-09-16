@@ -1,0 +1,142 @@
+﻿module Rewriting
+    open Expressions
+    open Metadata
+
+    type RewriterWrapper = (Expr * TypeDef list)
+
+    type RewriterBuilder() =
+        member this.Bind(x : RewriterWrapper, f : (Expr -> RewriterWrapper)) : RewriterWrapper =
+            let (expr, types) = x
+            let (expr', types') = f expr
+            (expr', List.append types types')
+
+        member this.Return(x) : RewriterWrapper =
+            (x, [])
+
+    type Rewriter() =
+        member this.RewriteMethod (rewriter : (RewriterWrapper -> RewriterWrapper)) (methodDef : MethodDef) =
+            let rw = new RewriterBuilder()
+            let rec rewriteExpr expr =
+                let wrapper' =
+                    match expr with
+                        | Immediate(v) -> 
+                            rw {
+                                return Immediate(v)
+                            }
+                        | VariableRef(ref) -> 
+                            rw {
+                                return VariableRef(ref)
+                            }
+                        | UnaryOperation(op, e) -> 
+                            rw {
+                                let! e' = rewriteExpr e
+                                return UnaryOperation(op, e')
+                            }
+                        | BinaryOperation(op, e1, e2) -> 
+                            rw {
+                                let! e1' = rewriteExpr e1
+                                let! e2' = rewriteExpr e2
+                                return BinaryOperation(op, e1', e2')
+                            }
+                        | LetBinding(b, e) ->
+                            rw {
+                                let! e' = rewriteExpr e
+                                return LetBinding(b, e')
+                            }
+                        | Conditional(e1, e2, e3) -> 
+                            rw {
+                                let! e1' = rewriteExpr e1
+                                let! e2' = rewriteExpr e2
+                                let! e3' = rewriteExpr e3
+                                return Conditional(e1', e2', e3')
+                            }
+                        | FunctionCall (e, b) -> 
+                            rw {
+                                let! e' = rewriteExpr e
+                                return FunctionCall(e', b)
+                            }
+                        | Lambda(p1, p2, e) -> 
+                            rw {
+                                let! e' = rewriteExpr e
+                                return Lambda(p1, p2, e')
+                            }
+                        | Closure(id, p) ->
+                            rw {
+                                return Closure(id, p)
+                            }
+                        | Assign(id, e) -> 
+                            rw {
+                                let! e' = rewriteExpr e
+                                return Assign(id, e')
+                            }
+                        | Sequence(es) -> 
+                            rw { 
+                                let wrappers = es |> List.map rewriteExpr
+                                let es' = wrappers |> List.map fst
+                                return Sequence(es')
+                            }
+                rewriter wrapper'
+            let (rewritten, types') = rewriteExpr methodDef.Body
+
+            ({ methodDef with Body = rewritten }, types')
+
+        member this.RewriteType rewriter (typeDef : TypeDef) =
+            let (methods', types') = 
+                List.foldBack (fun m (ms, ts) -> 
+                    let (rewritten, newTypes) = this.RewriteMethod rewriter m
+                    (rewritten :: ms, List.append newTypes ts)
+                    ) typeDef.Functions ([], [])
+            { typeDef with Functions = methods'; NestedTypes = (List.append typeDef.NestedTypes types') }
+        
+    type LambdaRewriter(ctx : CompilerContext) =
+        let createLambdaType (formalParams : TypedIdentifier list) (capturedParams : TypedIdentifier list) expr =
+            let invokeMethod : MethodDef = {
+                Name = "Invoke";
+                Builder = None;
+                Body = expr;  // TODO -- rewrite storage locs?
+                ReturnType = Some(typeof<int>);  // ???
+                Parameters = formalParams;
+                IsStatic = false;
+            }
+
+            let capturedFields = capturedParams |> List.map (fun (id, t) -> { Name = id; Type = t; Builder = None })
+
+            let renamedCtorParams = capturedParams |> List.map(fun (id, t) -> ("_" + id, t))
+
+            let ctorExpr = 
+                Expr.Sequence(
+                    capturedParams |> List.map (fun (id, t) ->
+                        Expr.Assign(id, Expr.VariableRef("_" + id))
+                        ))
+
+            let ctor : CtorDef = {
+                Builder = None;
+                Body = ctorExpr;
+                Parameters = renamedCtorParams
+            }
+
+            let lambdaType : TypeDef = {
+                Name = (sprintf "lambda%i" (ctx.SymGen.GetNewSymbol()));
+                Builder = None
+                Functions = [ invokeMethod ];
+                Ctors = [ ctor ];
+                NestedTypes = [];
+                IsNested = true;
+                Fields = capturedFields;
+                }
+
+            lambdaType
+
+        let defaultTypes (ids : Identifier list) =
+            ids |> List.map (fun id -> (id, typeof<int>))
+
+        member this.Rewriter (wrapper : RewriterWrapper) =
+            let (expr, types) = wrapper
+            match expr with
+                | Lambda(formalParams, capturedParams, e) ->
+                    let formalParams' = (defaultTypes formalParams)
+                    let capturedParams' = (defaultTypes capturedParams)
+                    let closure = createLambdaType formalParams' capturedParams' e
+                    // TODO -- need to replace the Lambda expr with a new instance of lambda
+                    (Expr.Closure(closure.Name, capturedParams'), closure :: types)
+                | other -> (other, types)

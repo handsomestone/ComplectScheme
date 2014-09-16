@@ -47,6 +47,12 @@
     <Reference Include="System.Numerics" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Util.fs" />
+    <Compile Include="Assembly.fs" />
+    <Compile Include="Symbols.fs" />
+    <Compile Include="Expressions.fs" />
+    <Compile Include="Metadata.fs" />
+    <Compile Include="Rewriting.fs" />
     <Compile Include="Compiler.fs" />
     <None Include="App.config" />
   </ItemGroup>

@@ -3,8 +3,11 @@
 open System.Reflection.Emit
 open Microsoft.VisualStudio.TestTools.UnitTesting
 open FsUnit
-open ComplectScheme
 
+open ComplectScheme
+open Assembly
+open Expressions
+open Metadata
 open Compiler
 
 module CompilerWrapper = 
