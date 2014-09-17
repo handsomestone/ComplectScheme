@@ -4,51 +4,51 @@
     open System.Reflection.Emit
 
     type Value =
-        | Int of int
-        | Char of char
         | Bool of bool
+        | Char of char
+        | Int of int
         | Null
 
     type Identifier = string
     type TypedIdentifier = Identifier * Type
 
     type StorageLoc =
-        | LocalStorage of int
         | ArgumentStorage of int
         | FieldStorage of StorageLoc * FieldInfo
+        | LocalStorage of int
 
     type BindingRef = Identifier * StorageLoc
 
     type UnaryOp =
         | Add1
-        | Sub1
-        | IsZero
         | IsNull
+        | IsZero
+        | Sub1
 
     type BinaryOp =
         | Add
         | Sub
 
     type Expr =
-        | Immediate of Value
-        | VariableRef of Identifier  // needs qualifiers?
-        | UnaryOperation of UnaryOp * Expr
+        | Assign of Identifier * Expr
         | BinaryOperation of BinaryOp * Expr * Expr
-        | LetBinding of Binding list * Expr
+        | Closure of Identifier * TypedIdentifier list
         | Conditional of Expr * Expr * Expr
         | FunctionCall of Expr * Binding list
+        | Immediate of Value
         | Lambda of Identifier list * Identifier list * Expr
-        | Closure of Identifier * TypedIdentifier list
-        | Assign of Identifier * Expr
+        | LetBinding of Binding list * Expr
         | Sequence of Expr list
+        | UnaryOperation of UnaryOp * Expr
+        | VariableRef of Identifier  // needs qualifiers?
     and Binding = Identifier * Expr
 
     module PrimitiveTypes =
         type TypeInfo = { Tag : int; Mask : int }
         module TypeInfos =
-            let Int = { Tag = 0b0000; Mask = 0b0011 }
-            let Char = { Tag = 0b00001111; Mask = 0b11111111 }
             let Bool = { Tag = 0b00011111; Mask = 0b01111111 }
+            let Char = { Tag = 0b00001111; Mask = 0b11111111 }
+            let Int = { Tag = 0b0000; Mask = 0b0011 }
             let Null = { Tag = 0b00101111; Mask = 0b11111111 }
 
         let encodeInt (x : int) =
