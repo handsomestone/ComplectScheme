@@ -51,7 +51,7 @@
     <Reference Include="System.Numerics" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Compiler.fs" />
+    <Compile Include="CompilerTests.fs" />
     <None Include="app.config" />
     <None Include="packages.config" />
   </ItemGroup>
