@@ -15,8 +15,11 @@ module Compiler =
     open Rewriting
 
     let getLambdaFuncType (methodDef : MethodDef) =
-        let openType = Type.GetType(sprintf "System.Func`%i" methodDef.Parameters.Length)
-        openType.MakeGenericType(methodDef.Parameters |> List.map (fun p -> p.Type) |> List.toArray)
+        let openType = Type.GetType(sprintf "System.Func`%i" (methodDef.Parameters.Length + 1))
+        // last type parameter is for return type
+        let paramTypes = methodDef.Parameters |> List.map (fun p -> p.Type)
+        let returnType = methodDef.ReturnType
+        openType.MakeGenericType((List.append paramTypes [ returnType ]) |> List.toArray)
 
     module PrimitiveOperations =
         let Add (ilGen : ILGenerator) =
@@ -74,15 +77,15 @@ module Compiler =
         let emitFieldStore (fi : FieldInfo) =
             ilGen.Emit(OpCodes.Stfld, fi)
 
-        let emitArgumentLoad (pi : ParameterInfo) =
+        let emitArgumentLoad (pi : ParameterBuilder) =
             ilGen.Emit(OpCodes.Ldarg, pi.Position)
 
-        let emitArgumentStore (pi : ParameterInfo) =
+        let emitArgumentStore (pi : ParameterBuilder) =
             ilGen.Emit(OpCodes.Starg, pi.Position)
 
         let rec emitStorageLoad (stg : StorageLoc) =
             match stg with
-                | ArgumentStorage(pi)-> emitArgumentLoad (pi.GetInfo())
+                | ArgumentStorage(pi)-> emitArgumentLoad (pi.GetBuilder())
                 | FieldStorage(fi) -> 
                     emitFieldLoad (fi.GetBuilder())
                 | LocalStorage li -> emitLocalVariableLoad (li.GetBuilder())
@@ -171,7 +174,7 @@ module Compiler =
                             let (id, expr) = binding
                             emitExpr expr env
                             )
-                        let invokeMethod = typeof<Func<int,int>>.GetMethod("Invoke")
+                        let invokeMethod = typeof<Func<int,int>>.GetMethod("Invoke")  // TODO -- infer types here
                         ilGen.Emit(OpCodes.Callvirt, invokeMethod)
                     | Immediate(i) -> emitValue i
                     | Lambda(formalParams, capturedParams, e) ->
@@ -237,16 +240,22 @@ module Compiler =
                     returnType,
                     methodDef.Parameters |> List.map (fun m -> m.Type) |> List.toArray)
 
+            let paramDefs = methodDef.Parameters |> List.mapi (fun i p ->
+                let builder = methodBuilder.DefineParameter(i + 1, ParameterAttributes.In, p.Name)
+                { p with Builder = Some(builder) })
+
+            let methodDef' = { methodDef with Parameters = paramDefs }
+
             let exprCompiler = new ExpressionCompiler(methodBuilder.GetILGenerator(), typeDef)
 
             let argBindings = 
-                methodDef.Parameters
+                methodDef'.Parameters
                 |> List.map (fun pi -> (pi.Name, StorageLoc.ArgumentStorage(pi)))
             let env' = new Env(Some(env), Some(argBindings))
 
-            exprCompiler.CompileExpression methodDef.Body env'
+            exprCompiler.CompileExpression methodDef'.Body env'
 
-            { methodDef with Builder = Some(methodBuilder) }
+            { methodDef' with Builder = Some(methodBuilder) }
 
         let DefineMethods (typeDef : TypeDef, env : Env) =
             let typeDef' =
@@ -263,16 +272,22 @@ module Compiler =
                     CallingConventions.HasThis,
                     ctorDef.Parameters |> List.map (fun m -> m.Type) |> List.toArray)
 
+            let paramDefs = ctorDef.Parameters |> List.mapi (fun i p ->
+                let builder = ctorBuilder.DefineParameter(i + 1, ParameterAttributes.In, p.Name)
+                { p with Builder = Some(builder) })
+
+            let ctorDef' = { ctorDef with Parameters = paramDefs }
+
             let exprCompiler = new ExpressionCompiler(ctorBuilder.GetILGenerator(), typeDef)
 
             let argBindings = 
-                ctorDef.Parameters
+                ctorDef'.Parameters
                 |> List.map (fun pi -> (pi.Name, StorageLoc.ArgumentStorage(pi)))
             let env' = new Env(Some(env), Some(argBindings))
 
-            exprCompiler.CompileCtor ctorDef.Body env'
+            exprCompiler.CompileCtor ctorDef'.Body env'
 
-            { ctorDef with Builder = Some(ctorBuilder) }
+            { ctorDef' with Builder = Some(ctorBuilder) }
 
         let DefineCtors (typeDef : TypeDef, env : Env) =
             let typeDef' =
@@ -284,8 +299,13 @@ module Compiler =
 
         let DefineFields (typeDef : TypeDef, env : Env) =
             let fieldDefs = typeDef.Fields |> List.map (DefineField typeDef)
+            let fieldBindings =
+                fieldDefs
+                |> List.map (fun f -> (f.Name, FieldStorage(f)))
 
-            ({ typeDef with Fields = fieldDefs }, env)
+            let env' = new Env(Some(env), Some(fieldBindings))
+
+            ({ typeDef with Fields = fieldDefs }, env')
 
         let DefineMembers (typeDef : TypeDef, env : Env) =
             (typeDef, env)
@@ -376,7 +396,17 @@ module Compiler =
 
     let mainExpr =
         let expr =
-            Expr.Immediate(Value.Null)
+            Expr.FunctionCall(
+                Expr.LetBinding(
+                    [("foo", Expr.Immediate(Value.Int(5)))],
+                    Expr.Lambda(
+                        [("bar", typeof<int>)],
+                        [("foo", typeof<int>)],
+                        Expr.BinaryOperation(
+                            BinaryOp.Add,
+                            Expr.VariableRef("bar", typeof<int>),
+                            Expr.VariableRef("foo", typeof<int>)))),
+                [("bar", Expr.Immediate(Value.Int(2)))])
         expr
 
     let drive (mainType : Type) args =
@@ -403,7 +433,7 @@ module Compiler =
             Name = "Main";
             Body = mainExpr;
             ReturnType = typeof<int>;
-            Parameters = [ { Name = "args"; Type = typeof<string>.MakeArrayType(); Info = None; Position = 0 } ];
+            Parameters = [ { Name = "args"; Type = typeof<string>.MakeArrayType(); Builder = None; Position = 0 } ];
             Builder = None;
             IsStatic = true;
         }

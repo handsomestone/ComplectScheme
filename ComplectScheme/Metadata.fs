@@ -22,16 +22,16 @@
     // (i.e. Builder/Info should not be option types)
 
     type ParameterDef = {
-        Info : ParameterInfo option;
+        Builder : ParameterBuilder option;
         Type : Type;
         Position : int;
         Name : string;
     }
     with
-        member this.GetInfo() =
-            match this.Info with
-                | Some(info) -> info
-                | None -> failwithf "Failed to get info for parameter %s" this.Name 
+        member this.GetBuilder() =
+            match this.Builder with
+                | Some(builder) -> builder
+                | None -> failwithf "Failed to get builder for parameter %s" this.Name 
 
     type CtorDef = {
         Builder : ConstructorBuilder option;

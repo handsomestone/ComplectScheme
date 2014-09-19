@@ -96,7 +96,7 @@
                 idList 
                 |> List.mapi (fun i (id, ptype) -> 
                     { 
-                        Info = None;
+                        Builder = None;
                         Type = ptype;
                         Name = id;
                         Position = i;
