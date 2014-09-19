@@ -14,16 +14,6 @@ module Compiler =
     open Scope
     open Rewriting
 
-    let getFuncType (paramTypes : Type list) (returnType : Type) =
-        // last type parameter is for return type
-        let openType = Type.GetType(sprintf "System.Func`%i" (paramTypes.Length + 1))
-        openType.MakeGenericType((paramTypes @ [ returnType ]) |> List.toArray)
-
-    let getLambdaFuncType (methodDef : MethodDef) =
-        let paramTypes = methodDef.Parameters |> List.map (fun p -> p.Type)
-        let returnType = methodDef.ReturnType
-        getFuncType paramTypes returnType
-
     module PrimitiveOperations =
         let Add (ilGen : ILGenerator) =
             ilGen.Emit(OpCodes.Add_Ovf)
@@ -207,9 +197,8 @@ module Compiler =
                     | VariableRef(ref, vtype) ->
                         emitVariableRef ref env
             emitExpr expr env
-            match TypeInference.inferType expr with
-                | t when t = typeof<System.Void> -> ilGen.Emit(OpCodes.Ret)
-                | _ -> ilGen.Emit(OpCodes.Ret)
+            if TypeInference.inferType expr = typeof<System.Void> then ilGen.Emit(OpCodes.Pop)
+            ilGen.Emit(OpCodes.Ret)
 
         member this.CompileCtor expr env =
             // Call base class constructor
@@ -427,17 +416,7 @@ module Compiler =
 
     let mainExpr =
         let expr =
-            Expr.FunctionCall(
-                Expr.LetBinding(
-                    [("foo", Expr.Immediate(Value.Int(5)))],
-                    Expr.Lambda(
-                        [("bar", typeof<int>)],
-                        [("foo", typeof<int>)],
-                        Expr.BinaryOperation(
-                            BinaryOp.Add,
-                            Expr.VariableRef("bar", typeof<int>),
-                            Expr.VariableRef("foo", typeof<int>)))),
-                [("bar", Expr.Immediate(Value.Int(2)))])
+            Expr.Immediate(Value.Null)
         expr
 
     let drive (mainType : Type) args =
@@ -463,7 +442,7 @@ module Compiler =
         let mainFunctionInfo = {
             Name = "Main";
             Body = mainExpr;
-            ReturnType = typeof<int>;
+            ReturnType = typeof<System.Void>;
             Parameters = [ { Name = "args"; Type = typeof<string>.MakeArrayType(); Builder = None; Position = 0 } ];
             Builder = None;
             IsStatic = true;

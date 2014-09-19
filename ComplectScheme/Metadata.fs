@@ -96,3 +96,13 @@
             match this.Builder with
                 | Some(builder) -> builder
                 | None -> failwithf "Failed to get builder for type %s" this.Name 
+
+    let getFuncType (paramTypes : Type list) (returnType : Type) =
+        // last type parameter is for return type
+        let openType = Type.GetType(sprintf "System.Func`%i" (paramTypes.Length + 1))
+        openType.MakeGenericType((paramTypes @ [ returnType ]) |> List.toArray)
+
+    let getLambdaFuncType (methodDef : MethodDef) =
+        let paramTypes = methodDef.Parameters |> List.map (fun p -> p.Type)
+        let returnType = methodDef.ReturnType
+        getFuncType paramTypes returnType
