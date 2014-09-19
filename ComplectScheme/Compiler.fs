@@ -8,35 +8,37 @@ module Compiler =
     open Util
     open Assembly
     open Symbols
+    open Types
     open Expressions
     open Metadata
+    open Scope
     open Rewriting
 
-    type Env(env : Env option, bindings : BindingRef list option) =
-        member private this.map = new Map<Identifier, StorageLoc>(match bindings with Some(b) -> (Seq.ofList b) | None -> Seq.empty)
+    let getLambdaFuncType (methodDef : MethodDef) =
+        let openType = Type.GetType(sprintf "System.Func`%i" methodDef.Parameters.Length)
+        openType.MakeGenericType(methodDef.Parameters |> List.map (fun p -> p.Type) |> List.toArray)
 
-        member private this.merge (other : BindingRef list) =
-            match bindings with
-                | Some(b) -> List.append other b
-                | None -> other
+    module PrimitiveOperations =
+        let Add (ilGen : ILGenerator) =
+            ilGen.Emit(OpCodes.Add_Ovf)
 
-        member this.FindIdentifier id =
-            match (this.map |> Map.tryFind id), env with
-                | Some stg, _-> Some stg
-                | None, Some e -> e.FindIdentifier id
-                | None, None -> None
+        let Sub (ilGen : ILGenerator) =
+            ilGen.Emit(OpCodes.Sub_Ovf)
 
-        member this.MergeWith (other : Env) =
-            let combined =
-                match bindings with
-                    | Some(b) -> other.merge b
-                    | None -> other.merge []
-            new Env(env, Some(combined))
+        let CompareEq (ilGen : ILGenerator) =
+            ilGen.Emit(OpCodes.Ceq)
 
     type ExpressionCompiler(ilGen : ILGenerator, typeDef : TypeDef) =
         let emitValue (value : Value) =
-            let imm = (PrimitiveTypes.encodeValue value)
-            ilGen.Emit(OpCodes.Ldc_I4, imm)
+            match value with
+                | Bool(b) ->
+                    if b then 
+                        ilGen.Emit(OpCodes.Ldc_I4_1) 
+                    else 
+                        ilGen.Emit(OpCodes.Ldc_I4_0)
+                | Char(c) -> ilGen.Emit(OpCodes.Ldc_I4_S, int c)
+                | Int(i) -> ilGen.Emit(OpCodes.Ldc_I4, i)
+                | Null -> ilGen.Emit(OpCodes.Ldnull)  // NOTE -- ldnull doesn't seem to work properly wrt stack size
 
         let emitUnaryOp op =
             match op with
@@ -46,11 +48,9 @@ module Compiler =
                 | UnaryOp.IsNull ->
                     emitValue (Value.Null)
                     PrimitiveOperations.CompareEq ilGen
-                    PrimitiveTypes.convertRawToBool ilGen
                 | UnaryOp.IsZero ->
                     emitValue (Value.Int(0))
                     PrimitiveOperations.CompareEq ilGen
-                    PrimitiveTypes.convertRawToBool ilGen
                 | UnaryOp.Sub1 -> 
                     emitValue (Value.Int(1))
                     PrimitiveOperations.Sub ilGen
@@ -62,44 +62,42 @@ module Compiler =
                 | BinaryOp.Sub ->
                     PrimitiveOperations.Sub ilGen
 
-        let emitLocalVariableLoad (ref : int) =
-            ilGen.Emit(OpCodes.Ldloc, ref)
+        let emitLocalVariableLoad (li : LocalVariableInfo) =
+            ilGen.Emit(OpCodes.Ldloc, li.LocalIndex)
             
-        let emitLocalVariableStore (ref : int) =
-            ilGen.Emit(OpCodes.Stloc, ref)
+        let emitLocalVariableStore (li : LocalVariableInfo) =
+            ilGen.Emit(OpCodes.Stloc, li.LocalIndex)
 
-        let emitFieldLoad (ref : FieldInfo) =
-            ilGen.Emit(OpCodes.Ldfld, ref)
+        let emitFieldLoad (fi : FieldInfo) =
+            ilGen.Emit(OpCodes.Ldfld, fi)
             
-        let emitFieldStore (ref : FieldInfo) =
-            ilGen.Emit(OpCodes.Stfld, ref)
+        let emitFieldStore (fi : FieldInfo) =
+            ilGen.Emit(OpCodes.Stfld, fi)
 
-        let emitArgumentLoad (ref : int) =
-            ilGen.Emit(OpCodes.Ldarg, ref)
+        let emitArgumentLoad (pi : ParameterInfo) =
+            ilGen.Emit(OpCodes.Ldarg, pi.Position)
 
-        let emitArgumentStore (ref : int) =
-            ilGen.Emit(OpCodes.Starg, ref)
+        let emitArgumentStore (pi : ParameterInfo) =
+            ilGen.Emit(OpCodes.Starg, pi.Position)
 
         let rec emitStorageLoad (stg : StorageLoc) =
             match stg with
-                | ArgumentStorage arg -> emitArgumentLoad arg
-                | FieldStorage (stg, fi) -> 
-                    emitStorageLoad stg
-                    emitFieldLoad fi
-                | LocalStorage local -> emitLocalVariableLoad local
+                | ArgumentStorage(pi)-> emitArgumentLoad (pi.GetInfo())
+                | FieldStorage(fi) -> 
+                    emitFieldLoad (fi.GetBuilder())
+                | LocalStorage li -> emitLocalVariableLoad (li.GetBuilder())
 
-        let rec emitStorageStore (stg : StorageLoc) emitValue  =
+        let rec emitStorageStore (stg : StorageLoc) emitValue =
             match stg with
                 | ArgumentStorage arg -> 
                     //emitArgumentStore arg
                     failwith "Can't store to argument storage"
-                | FieldStorage (stg, fi) -> 
-                    emitStorageLoad stg
+                | FieldStorage (fi) -> 
                     emitValue()
-                    emitFieldStore fi
-                | LocalStorage local ->
+                    emitFieldStore (fi.GetBuilder())
+                | LocalStorage li ->
                     emitValue()
-                    emitLocalVariableStore local
+                    emitLocalVariableStore (li.GetBuilder())
                 
         let emitVariableRef ref (env : Env) =
             match env.FindIdentifier ref with
@@ -113,11 +111,19 @@ module Compiler =
                     emitStorageStore stg emitValue
                 | None -> failwithf "Unable to find binding for identifier %s" ref
             
-        let storeLocalVariable (binding : Binding) : BindingRef =
-            let (id, expr) = binding
-            let localBuilder = ilGen.DeclareLocal(typeof<int>)
+        let storeLocalVariable (binding : Typed<Binding>) : BindingRef =
+            let ((id, expr), varType) = binding
+            let localBuilder = ilGen.DeclareLocal(varType)
             localBuilder.SetLocalSymInfo(id)
-            let stgLoc = LocalStorage(localBuilder.LocalIndex)
+
+            let localVarDef = {
+                Builder = Some(localBuilder);
+                Index = localBuilder.LocalIndex;
+                Name = id;
+                Type = varType;
+                }
+
+            let stgLoc = LocalStorage(localVarDef)
             ilGen.Emit(OpCodes.Stloc, localBuilder)
             (id, stgLoc)
 
@@ -144,7 +150,7 @@ module Compiler =
                         ilGen.MarkLabel(l0)
                         emitExpr e2 env
                         ilGen.MarkLabel(l1)
-                    | Closure(typeId, args) ->
+                    | Closure(typeId, args, ret) ->
                         let lambdaType = 
                             match typeDef.NestedTypes |> List.tryFind (fun t -> t.Name = typeId) with
                                 | Some(t) -> t
@@ -155,8 +161,9 @@ module Compiler =
                             )
                         emitNewObj (ctor.GetBuilder())
                         let invokeMethod = lambdaType.Functions |> List.find (fun f -> f.Name = "Invoke")
+                        let invokeType = getLambdaFuncType invokeMethod
                         ilGen.Emit(OpCodes.Ldftn, invokeMethod.GetBuilder())
-                        ilGen.Emit(OpCodes.Newobj, typeof<Func<int, int>>.GetConstructor([| typeof<obj>; typeof<IntPtr> |]))
+                        ilGen.Emit(OpCodes.Newobj, invokeType.GetConstructor([| typeof<obj>; typeof<IntPtr> |]))
                     | FunctionCall(e, bindings) ->
                         emitExpr e env
                         bindings |> List.iter (fun binding -> 
@@ -174,8 +181,9 @@ module Compiler =
                             bindings 
                             |> List.map (fun binding -> 
                                 let (_, expr) = binding
+                                let btype = TypeInference.inferType expr
                                 emitExpr expr env
-                                storeLocalVariable binding
+                                storeLocalVariable (binding, btype)
                                 )
                         emitExpr e (new Env(Some(env), Some(bindingRefs)))
                     | Sequence(exprs) ->
@@ -183,10 +191,12 @@ module Compiler =
                     | UnaryOperation(op, e) ->
                         emitExpr e env
                         emitUnaryOp op
-                    | VariableRef(ref) ->
+                    | VariableRef(ref, vtype) ->
                         emitVariableRef ref env
             emitExpr expr env
-            ilGen.Emit(OpCodes.Ret)
+            match TypeInference.inferType expr with
+                | t when t = typeof<System.Void> -> ilGen.Emit(OpCodes.Ret)
+                | _ -> ilGen.Emit(OpCodes.Ret)
 
         member this.CompileCtor expr env =
             // Call base class constructor
@@ -215,16 +225,23 @@ module Compiler =
                 else
                     MethodAttributes.Public
 
+            let returnType = 
+                match methodDef.ReturnType with 
+                    | t when t = typeof<System.Void> -> null 
+                    | t -> t
+
             let methodBuilder = 
                 typeDef.GetBuilder().DefineMethod(
                     methodDef.Name,
                     methodAttrs,
-                    (someOrNull methodDef.ReturnType),
-                    methodDef.Parameters |> List.map snd |> List.toArray)
+                    returnType,
+                    methodDef.Parameters |> List.map (fun m -> m.Type) |> List.toArray)
 
             let exprCompiler = new ExpressionCompiler(methodBuilder.GetILGenerator(), typeDef)
 
-            let argBindings = methodDef.Parameters |> List.mapi (fun i (id, _) -> (id, StorageLoc.ArgumentStorage(i + 1)))
+            let argBindings = 
+                methodDef.Parameters
+                |> List.map (fun pi -> (pi.Name, StorageLoc.ArgumentStorage(pi)))
             let env' = new Env(Some(env), Some(argBindings))
 
             exprCompiler.CompileExpression methodDef.Body env'
@@ -244,11 +261,13 @@ module Compiler =
                 typeDef.GetBuilder().DefineConstructor(
                     MethodAttributes.Public,
                     CallingConventions.HasThis,
-                    ctorDef.Parameters |> List.map snd |> List.toArray)
-        
+                    ctorDef.Parameters |> List.map (fun m -> m.Type) |> List.toArray)
+
             let exprCompiler = new ExpressionCompiler(ctorBuilder.GetILGenerator(), typeDef)
-        
-            let argBindings = ctorDef.Parameters |> List.mapi (fun i (id, _) -> (id, StorageLoc.ArgumentStorage(i + 1)))
+
+            let argBindings = 
+                ctorDef.Parameters
+                |> List.map (fun pi -> (pi.Name, StorageLoc.ArgumentStorage(pi)))
             let env' = new Env(Some(env), Some(argBindings))
 
             exprCompiler.CompileCtor ctorDef.Body env'
@@ -265,23 +284,15 @@ module Compiler =
 
         let DefineFields (typeDef : TypeDef, env : Env) =
             let fieldDefs = typeDef.Fields |> List.map (DefineField typeDef)
-            let fieldBindings = 
-                fieldDefs
-                |> List.map (fun fieldDef -> 
-                    let fieldBuilder = fieldDef.GetBuilder()
-                    (fieldDef.Name, StorageLoc.FieldStorage(StorageLoc.ArgumentStorage(0), fieldBuilder))
-                    )
 
-            let env' = new Env(Some(env), Some(fieldBindings))
-
-            (typeDef, env')
+            ({ typeDef with Fields = fieldDefs }, env)
 
         let DefineMembers (typeDef : TypeDef, env : Env) =
             (typeDef, env)
             |> DefineFields
             |> DefineMethods
             |> DefineCtors
-            
+
         let rec DefineNestedType (outerTypeBuilder : TypeBuilder) (typeDef : TypeDef, env : Env) =
             let innerTypeBuilder =
                 outerTypeBuilder.DefineNestedType(
@@ -349,7 +360,7 @@ module Compiler =
                 let (_, createdTypes) = TypeCompiler.CompileType moduleBuilder (t, env)
                 createdTypes
                 )
-        
+
         // Find and set the entry point to the assembly
         let mainMethod = 
             createdTypes 
@@ -365,17 +376,7 @@ module Compiler =
 
     let mainExpr =
         let expr =
-            Expr.FunctionCall(
-                Expr.LetBinding(
-                    [("foo", Expr.Immediate(Value.Int(1)))],
-                    Expr.Lambda(
-                        ["bar"],
-                        ["foo"],
-                        Expr.BinaryOperation(
-                            BinaryOp.Add,
-                            Expr.VariableRef("bar"),
-                            Expr.VariableRef("foo")))),
-                [("bar", Expr.Immediate(Value.Int(2)))])
+            Expr.Immediate(Value.Null)
         expr
 
     let drive (mainType : Type) args =
@@ -401,8 +402,8 @@ module Compiler =
         let mainFunctionInfo = {
             Name = "Main";
             Body = mainExpr;
-            ReturnType = Some(typeof<int>);
-            Parameters = [ ("args", typeof<string>.MakeArrayType()) ];
+            ReturnType = typeof<int>;
+            Parameters = [ { Name = "args"; Type = typeof<string>.MakeArrayType(); Info = None; Position = 0 } ];
             Builder = None;
             IsStatic = true;
         }

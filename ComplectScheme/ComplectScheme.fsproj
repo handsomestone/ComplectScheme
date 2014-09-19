@@ -52,6 +52,8 @@
     <Compile Include="Symbols.fs" />
     <Compile Include="Expressions.fs" />
     <Compile Include="Metadata.fs" />
+    <Compile Include="Scope.fs" />
+    <Compile Include="Types.fs" />
     <Compile Include="Rewriting.fs" />
     <Compile Include="Compiler.fs" />
     <None Include="App.config" />

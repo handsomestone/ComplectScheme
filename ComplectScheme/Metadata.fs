@@ -18,10 +18,25 @@
         SymGen : SymbolGenerator;
         }
 
+    // TODO -- unconcstructed and constructed *defs should probably not live in the same type
+    // (i.e. Builder/Info should not be option types)
+
+    type ParameterDef = {
+        Info : ParameterInfo option;
+        Type : Type;
+        Position : int;
+        Name : string;
+    }
+    with
+        member this.GetInfo() =
+            match this.Info with
+                | Some(info) -> info
+                | None -> failwithf "Failed to get info for parameter %s" this.Name 
+
     type CtorDef = {
         Builder : ConstructorBuilder option;
         Body : Expr;
-        Parameters : TypedIdentifier list
+        Parameters : ParameterDef list
         }
         with
         member this.GetBuilder() =
@@ -33,8 +48,8 @@
         Builder : MethodBuilder option;
         Name : string;
         Body : Expr;
-        ReturnType : Type option;
-        Parameters : TypedIdentifier list
+        ReturnType : Type;
+        Parameters : ParameterDef list
         IsStatic : bool;
         }
         with
@@ -53,6 +68,18 @@
             match this.Builder with
                 | Some(builder) -> builder
                 | None -> failwithf "Failed to get builder for field %s" this.Name 
+
+    type LocalVariableDef = {
+        Builder : LocalBuilder option;
+        Type : Type;
+        Name : string;
+        Index : int;
+    }
+    with
+        member this.GetBuilder() =
+            match this.Builder with
+                | Some(builder) -> builder
+                | None -> failwithf "Failed to get builder for local variable %s" this.Name 
 
     type TypeDef = {
         Builder : TypeBuilder option;

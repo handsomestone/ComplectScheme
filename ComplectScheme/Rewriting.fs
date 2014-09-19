@@ -1,6 +1,8 @@
 ﻿module Rewriting
     open Expressions
     open Metadata
+    open Scope
+    open Types
 
     type RewriterWrapper = (Expr * TypeDef list)
 
@@ -23,9 +25,9 @@
                             rw {
                                 return Immediate(v)
                             }
-                        | VariableRef(ref) -> 
+                        | VariableRef(ref, vtype) -> 
                             rw {
-                                return VariableRef(ref)
+                                return VariableRef(ref, vtype)
                             }
                         | UnaryOperation(op, e) -> 
                             rw {
@@ -60,9 +62,9 @@
                                 let! e' = rewriteExpr e
                                 return Lambda(p1, p2, e')
                             }
-                        | Closure(id, p) ->
+                        | Closure(id, p, ret) ->
                             rw {
-                                return Closure(id, p)
+                                return Closure(id, p, ret)
                             }
                         | Assign(id, e) -> 
                             rw {
@@ -89,43 +91,67 @@
             { typeDef with Functions = methods'; NestedTypes = (List.append typeDef.NestedTypes types') }
         
     type LambdaRewriter(ctx : CompilerContext) =
-        let createLambdaType (formalParams : TypedIdentifier list) (capturedParams : TypedIdentifier list) expr =
+        let createLambdaType (formalParams : Typed<Identifier> list) (capturedParams : Typed<Identifier> list) expr =
+            let typedIds2ParameterDefs idList =
+                idList 
+                |> List.mapi (fun i (id, ptype) -> 
+                    { 
+                        Info = None;
+                        Type = ptype;
+                        Name = id;
+                        Position = i;
+                    })
+
+            let formalParamDefs = typedIds2ParameterDefs formalParams
+
+            let returnType = TypeInference.inferType expr
+
             let invokeMethod : MethodDef = {
                 Name = "Invoke";
                 Builder = None;
                 Body = expr;  // TODO -- rewrite storage locs?
-                ReturnType = Some(typeof<int>);  // ???
-                Parameters = formalParams;
+                ReturnType = returnType;  // ???
+                Parameters = formalParamDefs;
                 IsStatic = false;
             }
 
-            let capturedFields = capturedParams |> List.map (fun (id, t) -> { Name = id; Type = t; Builder = None })
+            let capturedParamDefs = 
+                capturedParams 
+                |> typedIds2ParameterDefs
+                |> List.map (fun p -> { p with Name = "_" + p.Name })
 
-            let renamedCtorParams = capturedParams |> List.map(fun (id, t) -> ("_" + id, t))
+            let capturedFieldDefs =
+                capturedParams
+                |> List.map (fun (id, ptype) -> 
+                    {
+                        FieldDef.Builder = None;
+                        FieldDef.Name = id;
+                        FieldDef.Type = ptype;
+                    })
 
             let ctorExpr = 
                 Expr.Sequence(
                     capturedParams |> List.map (fun (id, t) ->
-                        Expr.Assign(id, Expr.VariableRef("_" + id))
+                        Expr.Assign(id, Expr.VariableRef("_" + id, t))
                         ))
 
             let ctor : CtorDef = {
                 Builder = None;
                 Body = ctorExpr;
-                Parameters = renamedCtorParams
+                Parameters = capturedParamDefs
             }
 
             let lambdaType : TypeDef = {
-                Name = (sprintf "lambda%i" (ctx.SymGen.GetNewSymbol()));
+                Name = (sprintf "lambda%i" (ctx.SymGen.GetNewSymbol()));  // TODO -- can we get a fully qualified type here?
                 Builder = None
                 Functions = [ invokeMethod ];
                 Ctors = [ ctor ];
                 NestedTypes = [];
                 IsNested = true;
-                Fields = capturedFields;
+                Fields = capturedFieldDefs;
                 }
 
-            lambdaType
+            (lambdaType, returnType)
 
         let defaultTypes (ids : Identifier list) =
             ids |> List.map (fun id -> (id, typeof<int>))
@@ -134,9 +160,7 @@
             let (expr, types) = wrapper
             match expr with
                 | Lambda(formalParams, capturedParams, e) ->
-                    let formalParams' = (defaultTypes formalParams)
-                    let capturedParams' = (defaultTypes capturedParams)
-                    let closure = createLambdaType formalParams' capturedParams' e
+                    let (closure, returnType) = createLambdaType formalParams capturedParams e
                     // TODO -- need to replace the Lambda expr with a new instance of lambda
-                    (Expr.Closure(closure.Name, capturedParams'), closure :: types)
+                    (Expr.Closure(closure.Name, capturedParams, returnType), closure :: types)
                 | other -> (other, types)

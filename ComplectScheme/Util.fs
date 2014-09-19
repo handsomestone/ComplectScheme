@@ -1,10 +1,4 @@
 ﻿module Util
-
-    let someOrNull =
-        function
-            | Some (t) -> t
-            | None -> null
-
     let apply f x =
         f x
 
