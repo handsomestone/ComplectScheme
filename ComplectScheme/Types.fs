@@ -10,7 +10,7 @@
                 | Bool(b) -> typeof<bool>
                 | Char(c) -> typeof<char>
                 | Int(i) -> typeof<int>
-                | Null -> typeof<System.Void>
+                | Null -> typeof<obj>
 
         let inferBinaryOpType op =
             typeof<int>  // assume all built-in binary ops are int valued for now
@@ -29,7 +29,7 @@
                     | _ -> failwithf "Type mismatch for expression"
             and inferTypeRec (expr : Expr) : Type =
                 match expr with
-                    | Assign(id, e) -> inferTypeRec e
+                    | Assign(id, e) -> typeof<System.Void>
                     | BinaryOperation(op, e1, e2) -> inferBinaryOpType op
                     | Conditional(test, e1, e2) -> inferTypes [e1; e2]
                     | Closure(typeId, args, ret) -> ret  // NOTE -- may want to return something else here, e.g. Closure<ret>

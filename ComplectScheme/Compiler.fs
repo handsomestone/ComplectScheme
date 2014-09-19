@@ -34,7 +34,7 @@ module Compiler =
                         ilGen.Emit(OpCodes.Ldc_I4_0)
                 | Char(c) -> ilGen.Emit(OpCodes.Ldc_I4_S, int c)
                 | Int(i) -> ilGen.Emit(OpCodes.Ldc_I4, i)
-                | Null -> ilGen.Emit(OpCodes.Ldnull)  // NOTE -- ldnull doesn't seem to work properly wrt stack size
+                | Null -> ilGen.Emit(OpCodes.Ldnull)
 
         let emitUnaryOp op =
             match op with
@@ -76,59 +76,65 @@ module Compiler =
         let emitArgumentStore (pi : ParameterBuilder) =
             ilGen.Emit(OpCodes.Starg, pi.Position)
 
-        let rec emitStorageLoad (stg : StorageLoc) =
+        let rec emitLoad (stg : StorageLoc) =
             match stg with
                 | ArgumentStorage(pi)-> emitArgumentLoad (pi.GetBuilder())
                 | FieldStorage(objStg, fi) -> 
-                    emitStorageLoad objStg
+                    emitLoad objStg
                     emitFieldLoad (fi.GetBuilder())
                 | LocalStorage li -> emitLocalVariableLoad (li.GetBuilder())
 
-        let rec emitStorageStore (stg : StorageLoc) emitValue =
+        let rec emitStore (stg : StorageLoc) emitValue =
             match stg with
-                | ArgumentStorage arg -> 
+                | ArgumentStorage arg ->
                     //emitArgumentStore arg
                     failwith "Can't store to argument storage"
-                | FieldStorage (objStg, fi) -> 
-                    emitStorageLoad objStg
+                | FieldStorage (objStg, fi) ->
+                    emitLoad objStg
                     emitValue()
                     emitFieldStore (fi.GetBuilder())
                 | LocalStorage li ->
                     emitValue()
                     emitLocalVariableStore (li.GetBuilder())
                 
-        let emitVariableRef ref (env : Env) =
-            match env.FindIdentifier ref with
+        let emitVariableRef id (env : Env) =
+            match env.FindIdentifier id with
                 | Some stg -> 
-                    emitStorageLoad stg
-                | None -> failwithf "Unable to find binding for identifier %s" ref
+                    emitLoad stg
+                | None -> failwithf "Unable to find binding for identifier %s" id
 
-        let emitVariableAssignment ref (env : Env) emitValue =
-            match env.FindIdentifier ref with
+        let emitVariableAssignment id (env : Env) emitValue =
+            match env.FindIdentifier id with
                 | Some stg ->
-                    emitStorageStore stg emitValue
-                | None -> failwithf "Unable to find binding for identifier %s" ref
-            
-        let storeLocalVariable (binding : Typed<Binding>) : BindingRef =
-            let ((id, expr), varType) = binding
-            let localBuilder = ilGen.DeclareLocal(varType)
-            localBuilder.SetLocalSymInfo(id)
+                    emitStore stg emitValue
+                | None -> failwithf "Unable to find binding for identifier %s" id
 
+        let storeLocalVariable (id : Identifier option) varType : BindingRef =
+            let localBuilder = ilGen.DeclareLocal(varType)
+
+            let name = 
+                match id with
+                    | Some(name) -> 
+                        localBuilder.SetLocalSymInfo(name)
+                        name
+                    | _ -> ""
+
+            // TODO -- probably want to return this
             let localVarDef = {
                 Builder = Some(localBuilder);
                 Index = localBuilder.LocalIndex;
-                Name = id;
+                Name = name;
                 Type = varType;
                 }
 
             let stgLoc = LocalStorage(localVarDef)
             ilGen.Emit(OpCodes.Stloc, localBuilder)
-            (id, stgLoc)
+            (name, stgLoc)
 
         let emitNewObj (ctor : ConstructorInfo) =
             ilGen.Emit(OpCodes.Newobj, ctor)
             
-        member this.CompileExpression expr env =
+        member this.CompileExpression (expr : Expr) (returnType : Type) (env : Env) =
             let rec emitExpr expr env =
                 match expr with
                     | Assign(id, e) ->
@@ -183,10 +189,10 @@ module Compiler =
                         let bindingRefs = 
                             bindings 
                             |> List.map (fun binding -> 
-                                let (_, expr) = binding
+                                let (id, expr) = binding
                                 let btype = TypeInference.inferType expr
                                 emitExpr expr env
-                                storeLocalVariable (binding, btype)
+                                storeLocalVariable (Some(id)) btype
                                 )
                         emitExpr e (new Env(Some(env), Some(bindingRefs)))
                     | Sequence(exprs) ->
@@ -194,21 +200,19 @@ module Compiler =
                     | UnaryOperation(op, e) ->
                         emitExpr e env
                         emitUnaryOp op
-                    | VariableRef(ref, vtype) ->
-                        emitVariableRef ref env
+                    | VariableRef(id, vtype) ->
+                        emitVariableRef id env
             emitExpr expr env
-            if TypeInference.inferType expr = typeof<System.Void> then ilGen.Emit(OpCodes.Pop)
             ilGen.Emit(OpCodes.Ret)
 
-        member this.CompileCtor expr env =
+        member this.CompileCtor (expr : Expr) (env : Env) =
             // Call base class constructor
             ilGen.Emit(OpCodes.Ldarg_0)
             ilGen.Emit(
                 OpCodes.Call,
                 (typeof<obj>).GetConstructor([||]))
 
-            this.CompileExpression expr env
-
+            this.CompileExpression expr typeof<System.Void> env
 
     type MethodOrCtorBuilder =
         | Constructor of ConstructorBuilder
@@ -285,7 +289,7 @@ module Compiler =
             let bindings = GetBindingsForMethod paramDefs thisParam typeDef.Fields
 
             let env' = new Env(Some(env), Some(bindings))
-            exprCompiler.CompileExpression methodDef'.Body env'
+            exprCompiler.CompileExpression methodDef'.Body methodDef.ReturnType env'
             { methodDef' with Builder = Some(methodBuilder) }
 
         let DefineMethods (typeDef : TypeDef, env : Env) =
@@ -442,7 +446,7 @@ module Compiler =
         let mainFunctionInfo = {
             Name = "Main";
             Body = mainExpr;
-            ReturnType = typeof<System.Void>;
+            ReturnType = (TypeInference.inferType mainExpr);
             Parameters = [ { Name = "args"; Type = typeof<string>.MakeArrayType(); Builder = None; Position = 0 } ];
             Builder = None;
             IsStatic = true;
