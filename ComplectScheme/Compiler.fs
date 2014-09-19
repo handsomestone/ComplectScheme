@@ -212,8 +212,46 @@ module Compiler =
 
             this.CompileExpression expr env
 
+
+    type MethodOrCtorBuilder =
+        | Constructor of ConstructorBuilder
+        | Method of MethodBuilder
+        with
+        member this.DefineParameter (pos : int) (attrs : ParameterAttributes) (name : string) =
+            match this with
+                | Constructor(b) -> b.DefineParameter(pos, attrs, name)
+                | Method(b) -> b.DefineParameter(pos, attrs, name)
+
     (* TODO -- need to figure out exactly the sequence of declaring / defining types and members here should be *) 
     module TypeCompiler =
+        let DefineParameters (builder : MethodOrCtorBuilder) (enclosingType : Type) (parameters : ParameterDef list) =
+            let thisParam = 
+                {
+                    Builder = Some(builder.DefineParameter 0 ParameterAttributes.In "this");
+                    Name = "this";
+                    Type = enclosingType;
+                    Position = 0;
+                }
+
+            let paramDefs = 
+                parameters 
+                |> List.mapi (fun i p ->
+                    let builder = builder.DefineParameter (i + 1) ParameterAttributes.In p.Name
+                    { p with Builder = Some(builder) })
+
+            (thisParam, paramDefs)
+
+        let GetBindingsForMethod (parameters : ParameterDef list) (thisParam : ParameterDef) (fields : FieldDef list) =
+            let argBindings = 
+                parameters
+                |> List.map (fun pi -> (pi.Name, StorageLoc.ArgumentStorage(pi)))
+
+            let fieldBindings =
+                fields
+                |> List.map (fun f -> (f.Name, FieldStorage(ArgumentStorage(thisParam), f)))
+
+            argBindings @ fieldBindings
+        
         let DefineField (typeDef : TypeDef) (fieldDef : FieldDef) : FieldDef =
             let fieldBuilder =
                 typeDef.GetBuilder().DefineField(
@@ -242,35 +280,15 @@ module Compiler =
                     returnType,
                     methodDef.Parameters |> List.map (fun m -> m.Type) |> List.toArray)
 
-            let bld = typeDef.GetBuilder()
-
-            let thisParam = 
-                {
-                    Builder = Some(methodBuilder.DefineParameter(0, ParameterAttributes.In, "this"));
-                    Name = "this";
-                    Type = bld.GetType();
-                    Position = 0;
-                }
-
-            let paramDefs = methodDef.Parameters |> List.mapi (fun i p ->
-                let builder = methodBuilder.DefineParameter(i + 1, ParameterAttributes.In, p.Name)
-                { p with Builder = Some(builder) })
+            let builder = MethodOrCtorBuilder.Method(methodBuilder)
+            let (thisParam, paramDefs) = DefineParameters builder (typeDef.GetBuilder().UnderlyingSystemType) methodDef.Parameters
 
             let methodDef' = { methodDef with Parameters = paramDefs }
-
             let exprCompiler = new ExpressionCompiler(methodBuilder.GetILGenerator(), typeDef)
+            let bindings = GetBindingsForMethod paramDefs thisParam typeDef.Fields
 
-            let fieldBindings =
-                typeDef.Fields
-                |> List.map (fun f -> (f.Name, FieldStorage(ArgumentStorage(thisParam), f)))
-
-            let argBindings = 
-                methodDef'.Parameters
-                |> List.map (fun pi -> (pi.Name, StorageLoc.ArgumentStorage(pi)))
-            let env' = new Env(Some(env), Some(fieldBindings @ argBindings))
-
+            let env' = new Env(Some(env), Some(bindings))
             exprCompiler.CompileExpression methodDef'.Body env'
-
             { methodDef' with Builder = Some(methodBuilder) }
 
         let DefineMethods (typeDef : TypeDef, env : Env) =
@@ -288,38 +306,15 @@ module Compiler =
                     CallingConventions.HasThis,
                     ctorDef.Parameters |> List.map (fun m -> m.Type) |> List.toArray)
 
-            let bld = typeDef.GetBuilder()
-
-            let thisParam = 
-                {
-                    Builder = Some(ctorBuilder.DefineParameter(0, ParameterAttributes.In, "this"));
-                    Name = "this";
-                    Type = bld.GetType();
-                    Position = 0;
-                }
-
-            let paramDefs =
-                ctorDef.Parameters 
-                |> List.mapi (fun i p ->
-                    let builder = ctorBuilder.DefineParameter(i + 1, ParameterAttributes.In, p.Name)
-                    { p with Builder = Some(builder) })
+            let builder = MethodOrCtorBuilder.Constructor(ctorBuilder)
+            let (thisParam, paramDefs) = DefineParameters builder (typeDef.GetBuilder().UnderlyingSystemType) ctorDef.Parameters
 
             let ctorDef' = { ctorDef with Parameters = paramDefs }
-
             let exprCompiler = new ExpressionCompiler(ctorBuilder.GetILGenerator(), typeDef)
-
-            let argBindings = 
-                ctorDef'.Parameters
-                |> List.map (fun pi -> (pi.Name, StorageLoc.ArgumentStorage(pi)))
-
-            let fieldBindings =
-                typeDef.Fields
-                |> List.map (fun f -> (f.Name, FieldStorage(ArgumentStorage(thisParam), f)))
-
-            let env' = new Env(Some(env), Some(fieldBindings @ argBindings))
-
+            let bindings = GetBindingsForMethod paramDefs thisParam typeDef.Fields
+            
+            let env' = new Env(Some(env), Some(bindings))
             exprCompiler.CompileCtor ctorDef'.Body env'
-
             { ctorDef' with Builder = Some(ctorBuilder) }
 
         let DefineCtors (typeDef : TypeDef, env : Env) =
