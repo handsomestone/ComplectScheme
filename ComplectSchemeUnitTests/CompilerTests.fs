@@ -15,7 +15,6 @@ module CompilerWrapper =
     let (asmInfo : AssemblyInfo) = { AssemblyName = "complect"; EntryPointName = "Main"; MainClassName = "MainClass"; ExecutableName = "program.exe" }
 
     let compileExpr expr =
-        // TODO -- probably need a real env here
         let returnType = TypeInference.inferType expr
     
         let mainFunctionInfo = {

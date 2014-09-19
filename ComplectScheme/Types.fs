@@ -12,6 +12,16 @@
                 | Int(i) -> typeof<int>
                 | Null -> typeof<System.Void>
 
+        let inferBinaryOpType op =
+            typeof<int>  // assume all built-in binary ops are int valued for now
+
+        let inferUnaryOpType op =
+            match op with
+                | UnaryOp.Add1 -> typeof<int>
+                | UnaryOp.IsNull -> typeof<bool>
+                | UnaryOp.IsZero -> typeof<bool>
+                | UnaryOp.Sub1 -> typeof<int>
+
         let inferType (expr : Expr) : Type =
             let rec inferTypes exprs =
                 match exprs |> List.map inferTypeRec with
@@ -20,7 +30,7 @@
             and inferTypeRec (expr : Expr) : Type =
                 match expr with
                     | Assign(id, e) -> inferTypeRec e
-                    | BinaryOperation(op, e1, e2) -> inferTypes [e1; e2]
+                    | BinaryOperation(op, e1, e2) -> inferBinaryOpType op
                     | Conditional(test, e1, e2) -> inferTypes [e1; e2]
                     | Closure(typeId, args, ret) -> ret
                     | FunctionCall(e, bindings) -> inferTypeRec e  // TODO -- trace?
@@ -28,13 +38,6 @@
                     | Lambda(formalParams, capturedParams, e) -> inferTypeRec e
                     | LetBinding(bindings, e) -> inferTypeRec e
                     | Sequence(exprs) -> inferTypeRec (exprs |> Seq.last)  // TODO -- not exactly sure what this should be
-                    | UnaryOperation(op, e) -> inferTypeRec e
+                    | UnaryOperation(op, e) -> inferUnaryOpType op
                     | VariableRef(id, vtype) -> vtype
-//                        match env.FindIdentifier id with
-//                            | None -> failwithf "Unable to find variable reference %s" id
-//                            | Some(stg) -> 
-//                                match stg with
-//                                    | ArgumentStorage(arg) -> arg.Type
-//                                    | FieldStorage(fld) -> fld.Type
-//                                    | LocalStorage(loc) -> loc.Type
             inferTypeRec expr
