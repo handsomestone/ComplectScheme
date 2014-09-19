@@ -19,7 +19,7 @@ module Compiler =
         // last type parameter is for return type
         let paramTypes = methodDef.Parameters |> List.map (fun p -> p.Type)
         let returnType = methodDef.ReturnType
-        openType.MakeGenericType((List.append paramTypes [ returnType ]) |> List.toArray)
+        openType.MakeGenericType((paramTypes @ [ returnType ]) |> List.toArray)
 
     module PrimitiveOperations =
         let Add (ilGen : ILGenerator) =
@@ -86,7 +86,8 @@ module Compiler =
         let rec emitStorageLoad (stg : StorageLoc) =
             match stg with
                 | ArgumentStorage(pi)-> emitArgumentLoad (pi.GetBuilder())
-                | FieldStorage(fi) -> 
+                | FieldStorage(objStg, fi) -> 
+                    emitStorageLoad objStg
                     emitFieldLoad (fi.GetBuilder())
                 | LocalStorage li -> emitLocalVariableLoad (li.GetBuilder())
 
@@ -95,7 +96,8 @@ module Compiler =
                 | ArgumentStorage arg -> 
                     //emitArgumentStore arg
                     failwith "Can't store to argument storage"
-                | FieldStorage (fi) -> 
+                | FieldStorage (objStg, fi) -> 
+                    emitStorageLoad objStg
                     emitValue()
                     emitFieldStore (fi.GetBuilder())
                 | LocalStorage li ->
@@ -240,6 +242,16 @@ module Compiler =
                     returnType,
                     methodDef.Parameters |> List.map (fun m -> m.Type) |> List.toArray)
 
+            let bld = typeDef.GetBuilder()
+
+            let thisParam = 
+                {
+                    Builder = Some(methodBuilder.DefineParameter(0, ParameterAttributes.In, "this"));
+                    Name = "this";
+                    Type = bld.GetType();
+                    Position = 0;
+                }
+
             let paramDefs = methodDef.Parameters |> List.mapi (fun i p ->
                 let builder = methodBuilder.DefineParameter(i + 1, ParameterAttributes.In, p.Name)
                 { p with Builder = Some(builder) })
@@ -248,10 +260,14 @@ module Compiler =
 
             let exprCompiler = new ExpressionCompiler(methodBuilder.GetILGenerator(), typeDef)
 
+            let fieldBindings =
+                typeDef.Fields
+                |> List.map (fun f -> (f.Name, FieldStorage(ArgumentStorage(thisParam), f)))
+
             let argBindings = 
                 methodDef'.Parameters
                 |> List.map (fun pi -> (pi.Name, StorageLoc.ArgumentStorage(pi)))
-            let env' = new Env(Some(env), Some(argBindings))
+            let env' = new Env(Some(env), Some(fieldBindings @ argBindings))
 
             exprCompiler.CompileExpression methodDef'.Body env'
 
@@ -272,9 +288,21 @@ module Compiler =
                     CallingConventions.HasThis,
                     ctorDef.Parameters |> List.map (fun m -> m.Type) |> List.toArray)
 
-            let paramDefs = ctorDef.Parameters |> List.mapi (fun i p ->
-                let builder = ctorBuilder.DefineParameter(i + 1, ParameterAttributes.In, p.Name)
-                { p with Builder = Some(builder) })
+            let bld = typeDef.GetBuilder()
+
+            let thisParam = 
+                {
+                    Builder = Some(ctorBuilder.DefineParameter(0, ParameterAttributes.In, "this"));
+                    Name = "this";
+                    Type = bld.GetType();
+                    Position = 0;
+                }
+
+            let paramDefs =
+                ctorDef.Parameters 
+                |> List.mapi (fun i p ->
+                    let builder = ctorBuilder.DefineParameter(i + 1, ParameterAttributes.In, p.Name)
+                    { p with Builder = Some(builder) })
 
             let ctorDef' = { ctorDef with Parameters = paramDefs }
 
@@ -283,7 +311,12 @@ module Compiler =
             let argBindings = 
                 ctorDef'.Parameters
                 |> List.map (fun pi -> (pi.Name, StorageLoc.ArgumentStorage(pi)))
-            let env' = new Env(Some(env), Some(argBindings))
+
+            let fieldBindings =
+                typeDef.Fields
+                |> List.map (fun f -> (f.Name, FieldStorage(ArgumentStorage(thisParam), f)))
+
+            let env' = new Env(Some(env), Some(fieldBindings @ argBindings))
 
             exprCompiler.CompileCtor ctorDef'.Body env'
 
@@ -299,13 +332,8 @@ module Compiler =
 
         let DefineFields (typeDef : TypeDef, env : Env) =
             let fieldDefs = typeDef.Fields |> List.map (DefineField typeDef)
-            let fieldBindings =
-                fieldDefs
-                |> List.map (fun f -> (f.Name, FieldStorage(f)))
 
-            let env' = new Env(Some(env), Some(fieldBindings))
-
-            ({ typeDef with Fields = fieldDefs }, env')
+            ({ typeDef with Fields = fieldDefs }, env)
 
         let DefineMembers (typeDef : TypeDef, env : Env) =
             (typeDef, env)

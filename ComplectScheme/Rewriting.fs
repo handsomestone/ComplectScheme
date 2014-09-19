@@ -10,7 +10,7 @@
         member this.Bind(x : RewriterWrapper, f : (Expr -> RewriterWrapper)) : RewriterWrapper =
             let (expr, types) = x
             let (expr', types') = f expr
-            (expr', List.append types types')
+            (expr', types @ types')
 
         member this.Return(x) : RewriterWrapper =
             (x, [])
@@ -86,9 +86,9 @@
             let (methods', types') = 
                 List.foldBack (fun m (ms, ts) -> 
                     let (rewritten, newTypes) = this.RewriteMethod rewriter m
-                    (rewritten :: ms, List.append newTypes ts)
+                    (rewritten :: ms, newTypes @ ts)
                     ) typeDef.Functions ([], [])
-            { typeDef with Functions = methods'; NestedTypes = (List.append typeDef.NestedTypes types') }
+            { typeDef with Functions = methods'; NestedTypes = typeDef.NestedTypes @ types' }
         
     type LambdaRewriter(ctx : CompilerContext) =
         let createLambdaType (formalParams : Typed<Identifier> list) (capturedParams : Typed<Identifier> list) expr =

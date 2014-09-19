@@ -4,7 +4,7 @@
 
     type StorageLoc =
         | ArgumentStorage of ParameterDef
-        | FieldStorage of FieldDef
+        | FieldStorage of StorageLoc * FieldDef
         | LocalStorage of LocalVariableDef
 
     type BindingRef = Identifier * StorageLoc
@@ -14,7 +14,7 @@
 
         member private this.merge (other : BindingRef list) =
             match bindings with
-                | Some(b) -> List.append other b
+                | Some(b) -> other @ b
                 | None -> other
 
         member this.FindIdentifier id =
