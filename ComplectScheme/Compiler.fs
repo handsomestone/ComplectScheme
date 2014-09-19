@@ -14,12 +14,15 @@ module Compiler =
     open Scope
     open Rewriting
 
-    let getLambdaFuncType (methodDef : MethodDef) =
-        let openType = Type.GetType(sprintf "System.Func`%i" (methodDef.Parameters.Length + 1))
+    let getFuncType (paramTypes : Type list) (returnType : Type) =
         // last type parameter is for return type
+        let openType = Type.GetType(sprintf "System.Func`%i" (paramTypes.Length + 1))
+        openType.MakeGenericType((paramTypes @ [ returnType ]) |> List.toArray)
+
+    let getLambdaFuncType (methodDef : MethodDef) =
         let paramTypes = methodDef.Parameters |> List.map (fun p -> p.Type)
         let returnType = methodDef.ReturnType
-        openType.MakeGenericType((paramTypes @ [ returnType ]) |> List.toArray)
+        getFuncType paramTypes returnType
 
     module PrimitiveOperations =
         let Add (ilGen : ILGenerator) =
@@ -171,12 +174,17 @@ module Compiler =
                         ilGen.Emit(OpCodes.Newobj, invokeType.GetConstructor([| typeof<obj>; typeof<IntPtr> |]))
                     | FunctionCall(e, bindings) ->
                         emitExpr e env
-                        bindings |> List.iter (fun binding -> 
-                            // TODO -- these should be ordered against the function args, by name?
-                            let (id, expr) = binding
-                            emitExpr expr env
-                            )
-                        let invokeMethod = typeof<Func<int,int>>.GetMethod("Invoke")  // TODO -- infer types here
+                        let paramTypes =
+                            bindings 
+                            |> List.map (fun binding -> 
+                                // TODO -- these should be ordered against the function args, by name?
+                                let (id, expr) = binding
+                                emitExpr expr env
+                                TypeInference.inferType expr
+                                )
+                        let retType = TypeInference.inferType e
+                        let funcType = getFuncType paramTypes retType
+                        let invokeMethod = funcType.GetMethod("Invoke")
                         ilGen.Emit(OpCodes.Callvirt, invokeMethod)
                     | Immediate(i) -> emitValue i
                     | Lambda(formalParams, capturedParams, e) ->

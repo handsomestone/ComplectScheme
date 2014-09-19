@@ -32,7 +32,7 @@
                     | Assign(id, e) -> inferTypeRec e
                     | BinaryOperation(op, e1, e2) -> inferBinaryOpType op
                     | Conditional(test, e1, e2) -> inferTypes [e1; e2]
-                    | Closure(typeId, args, ret) -> ret
+                    | Closure(typeId, args, ret) -> ret  // NOTE -- may want to return something else here, e.g. Closure<ret>
                     | FunctionCall(e, bindings) -> inferTypeRec e  // TODO -- trace?
                     | Immediate(i) -> inferValueType i
                     | Lambda(formalParams, capturedParams, e) -> inferTypeRec e
