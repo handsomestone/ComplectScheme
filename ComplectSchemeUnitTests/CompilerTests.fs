@@ -252,9 +252,44 @@ type Conditionals() =
 type Lambdas() =
 
     let foo = ("foo", Expr.Immediate(Value.Int(5)))
+    let bar = ("bar", Expr.Immediate(Value.Int(2)))
 
     [<TestMethod>]
-    member this.``Basic lambda``() =
+    member this.``Basic lambda, no captures``() =
+        let expr =
+            Expr.FunctionCall(
+                Expr.Lambda(
+                    [("bar", typeof<int>)],
+                    [ ],
+                    Expr.BinaryOperation(
+                        BinaryOp.Add,
+                        Expr.VariableRef("bar", typeof<int>),
+                        Expr.Immediate(Value.Int(1)))),
+                [bar])
+        let ret = compileAndRunExpr expr
+
+        ret |> should equal 3
+
+    [<TestMethod>]
+    member this.``Basic lambda with captures, no formal parameters``() =
+        let expr =
+            Expr.FunctionCall(
+                Expr.LetBinding(
+                    [foo; bar],
+                    Expr.Lambda(
+                        [],
+                        [("bar", typeof<int>); ("foo", typeof<int>)],
+                        Expr.BinaryOperation(
+                            BinaryOp.Add,
+                            Expr.VariableRef("bar", typeof<int>),
+                            Expr.VariableRef("foo", typeof<int>)))),
+                [])
+        let ret = compileAndRunExpr expr
+
+        ret |> should equal 7
+
+    [<TestMethod>]
+    member this.``Basic lambda with captured variable and formal parameter``() =
         let expr =
             Expr.FunctionCall(
                 Expr.LetBinding(
@@ -266,7 +301,7 @@ type Lambdas() =
                             BinaryOp.Add,
                             Expr.VariableRef("bar", typeof<int>),
                             Expr.VariableRef("foo", typeof<int>)))),
-                [("bar", Expr.Immediate(Value.Int(2)))])
+                [bar])
         let ret = compileAndRunExpr expr
 
         ret |> should equal 7
