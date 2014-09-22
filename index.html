@@ -36,6 +36,13 @@ This repository is for developing the tutorial compiler as described in <a href=
       </section>
     </div>
 
+    <ul>
+      {% for post in site.posts %}
+        <li>
+          <a href="{{ post.url }}">{{ post.title }}</a>
+        </li>
+      {% endfor %}
+    </ul>
     
   </body>
 </html>
