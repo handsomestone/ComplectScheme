@@ -19,6 +19,11 @@ type ParserTests() =
         l |> List.map (fun v -> test parser v)
 
     [<TestMethod>]
+    member this.``Empty list``() =
+        let v = "()"
+        test Parser.list v |> should equal (Identifier.List([]))
+
+    [<TestMethod>]
     member this.``1 symbol list``() =
         let v = "(one)"
         test Parser.parse v |> should equal (Identifier.List([ Identifier.Symbol("one") ]))
@@ -44,9 +49,14 @@ type ParserTests() =
         testAll Parser.integer v |> should equal [ Identifier.Int(1); Identifier.Int(-20) ]
 
     [<TestMethod>]
-    member this.``Booleans``() =
+    member this.``Valid Booleans``() =
         let v = ["#t"; "#f"]
         testAll Parser.boolean v |> should equal [ Identifier.Bool(true); Identifier.Bool(false) ]
+
+    [<TestMethod>]
+    member this.``Valid Booleans``() =
+        let v = ["#x"; "#f"]
+        testAll Parser.boolean v |> should equal
 
     [<TestMethod>]
     member this.``Characters``() =
@@ -55,14 +65,16 @@ type ParserTests() =
 
     [<TestMethod>]
     member this.``Heterogeneous list``() =
-        let v = "(+ \"bar\" 1 #t #\\A)"
+        let v = "(+ \"bar\" 1 #t #\\A (a . b) (foo))"
         test Parser.parse v |> should equal 
             (Identifier.List(
                 [ Identifier.Symbol("+"); 
                   Identifier.String("bar"); 
                   Identifier.Int(1); 
                   Identifier.Bool(true);
-                  Identifier.Char('A') ]))
+                  Identifier.Char('A');
+                  Identifier.Pair(Identifier.Symbol("a"), Identifier.Symbol("b"));
+                  Identifier.List([ Identifier.Symbol("foo") ]) ]))
 
     [<TestMethod>]
     member this.``Nested lists``() =
@@ -75,3 +87,18 @@ type ParserTests() =
                       Identifier.Int(1);
                       Identifier.List([ Identifier.String("bar") ]) ]);
                   Identifier.Symbol("baz") ]))
+
+    [<TestMethod>]
+    member this.``Pairs``() =
+        let v = "(foo . bar)"
+        test Parser.pair v |> should equal (Identifier.Pair(Identifier.Symbol("foo"), Identifier.Symbol("bar")))
+
+    [<TestMethod>]
+    member this.``Pairs, no space``() =
+        let v = "(foo.bar)"
+        test Parser.pair v |> should equal (Identifier.Pair(Identifier.Symbol("foo"), Identifier.Symbol("bar")))
+
+    [<TestMethod>]
+    member this.``Pairs, with int``() =
+        let v = "(1.bar)"
+        test Parser.pair v |> should equal (Identifier.Pair(Identifier.Int(1), Identifier.Symbol("bar")))
