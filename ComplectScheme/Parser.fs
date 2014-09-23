@@ -45,9 +45,12 @@
         stringReturn "#t" (Identifier.Bool(true))
         <|> stringReturn "#f" (Identifier.Bool(false))
 
+    let char =
+        str "#\\" >>. anyChar |>> Identifier.Char
+
     // Defines the recursive parser to be a choice over the existing parsers
     // NOTE -- symbol should be last as it is the most greedy
-    do idValueRef := choice [ list; stringLiteral; integer; boolean; symbol ]
+    do idValueRef := choice [ list; stringLiteral; integer; char; boolean; symbol ]
 
     // Top-level form should be a list
     let parse = list
