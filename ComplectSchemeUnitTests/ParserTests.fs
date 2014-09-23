@@ -26,11 +26,16 @@ type ParserTests() =
         test Parser.parse v |> should equal (Identifier.List([ Identifier.Symbol("one"); Identifier.Symbol("two"); Identifier.Symbol("three") ]))
     
     [<TestMethod>]
-    member this.``+ symbol``() =
-        let v = "(+)"
-        test Parser.parse v |> should equal (Identifier.List([ Identifier.Symbol("+") ]))
+    member this.``Symbols``() =
+        let v = "(+ - foo)"
+        test Parser.parse v |> should equal (Identifier.List([ Identifier.Symbol("+"); Identifier.Symbol("-"); Identifier.Symbol("foo") ]))
 
     [<TestMethod>]
     member this.``String literal``() =
-        let v = "(\"foo_bar123'\")"
-        test Parser.parse v |> should equal (Identifier.List([ Identifier.String("foo_bar123'") ]))
+        let v = "(\"foo bar\" \"1'2_3\")"
+        test Parser.parse v |> should equal (Identifier.List([ Identifier.String("foo bar"); Identifier.String("1'2_3") ]))
+
+    [<TestMethod>]
+    member this.``Heterogeneous list``() =
+        let v = "(+ \"bar\")"
+        test Parser.parse v |> should equal (Identifier.List([ Identifier.Symbol("+"); Identifier.String("bar") ]))
