@@ -49,14 +49,20 @@ type ParserTests() =
         testAll Parser.boolean v |> should equal [ Identifier.Bool(true); Identifier.Bool(false) ]
 
     [<TestMethod>]
+    member this.``Characters``() =
+        let v = ["#\\A"; "#\\f"]
+        testAll Parser.char v |> should equal [ Identifier.Char('A'); Identifier.Char('f') ]
+
+    [<TestMethod>]
     member this.``Heterogeneous list``() =
-        let v = "(+ \"bar\" 1 #t)"
+        let v = "(+ \"bar\" 1 #t #\A)"
         test Parser.parse v |> should equal 
             (Identifier.List(
                 [ Identifier.Symbol("+"); 
                   Identifier.String("bar"); 
                   Identifier.Int(1); 
-                  Identifier.Bool(true) ]))
+                  Identifier.Bool(true);
+                  Identifier.Char('A') ]))
 
     [<TestMethod>]
     member this.``Nested lists``() =
