@@ -7,6 +7,7 @@
         | Int of int
         | List of Identifier list
         | String of string
+        | Bool of bool
 
     // Characters and string functions
     let reservedChars = Set.ofList [ '('; ')'; '\'' ]
@@ -37,8 +38,16 @@
         // TODO -- implement escape characters
         between (str "\"") (str "\"") (manySatisfy validStringContents) |>> Identifier.String
 
+    let integer =
+        pint32 |>> Identifier.Int
+
+    let boolean =
+        stringReturn "#t" (Identifier.Bool(true))
+        <|> stringReturn "#f" (Identifier.Bool(false))
+
     // Defines the recursive parser to be a choice over the existing parsers
-    do idValueRef := choice [ stringLiteral; list; symbol ]
+    // NOTE -- symbol should be last as it is the most greedy
+    do idValueRef := choice [ list; stringLiteral; integer; boolean; symbol ]
 
     // Top-level form should be a list
     let parse = list
