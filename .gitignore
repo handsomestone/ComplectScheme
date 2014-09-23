@@ -154,3 +154,5 @@ $RECYCLE.BIN/
 
 # Mac desktop service store files
 .DS_Store
+/packages/FParsec.1.0.1/lib/net40-client
+*.nupkg
