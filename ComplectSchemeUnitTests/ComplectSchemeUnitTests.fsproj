@@ -60,9 +60,9 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="CompilerTests.fs" />
+    <Compile Include="ParserTests.fs" />
     <None Include="app.config" />
     <None Include="packages.config" />
-    <Compile Include="ParserTests.fs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\ComplectScheme\ComplectScheme.fsproj">

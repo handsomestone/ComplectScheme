@@ -16,25 +16,21 @@ type ParserTests() =
             | ParserResult.Failure(x, _, _) -> failwith x
 
     [<TestMethod>]
-    member this.``1 item list``() =
+    member this.``1 symbol list``() =
         let v = "(one)"
-
-        test Parser.parseList v |> should equal [ "one" ]
+        test Parser.parse v |> should equal (Identifier.List([ Identifier.Symbol("one") ]))
 
     [<TestMethod>]
-    member this.``3 item list``() =
+    member this.``3 symbol list``() =
         let v = "(one two three)"
-
-        test Parser.parseList v |> should equal [ "one"; "two"; "three" ]
+        test Parser.parse v |> should equal (Identifier.List([ Identifier.Symbol("one"); Identifier.Symbol("two"); Identifier.Symbol("three") ]))
     
     [<TestMethod>]
     member this.``+ symbol``() =
-        let v = "(+ 1 2)"
+        let v = "(+)"
+        test Parser.parse v |> should equal (Identifier.List([ Identifier.Symbol("+") ]))
 
-        test Parser.parseList v |> should equal [ "+"; "1"; "2" ]
-    
-//    [<TestMethod>]
-//    member this.``float list``() =
-//        let v = "(1.0)"
-//
-//        test Parser.parseList v |> should equal 1.0
+    [<TestMethod>]
+    member this.``String literal``() =
+        let v = "(\"foo_bar123'\")"
+        test Parser.parse v |> should equal (Identifier.List([ Identifier.String("foo_bar123'") ]))
