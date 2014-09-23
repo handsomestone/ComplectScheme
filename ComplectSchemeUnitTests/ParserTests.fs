@@ -55,7 +55,7 @@ type ParserTests() =
 
     [<TestMethod>]
     member this.``Heterogeneous list``() =
-        let v = "(+ \"bar\" 1 #t #\A)"
+        let v = "(+ \"bar\" 1 #t #\\A)"
         test Parser.parse v |> should equal 
             (Identifier.List(
                 [ Identifier.Symbol("+"); 
