@@ -15,6 +15,9 @@ type ParserTests() =
             | ParserResult.Success(x, _, _) -> x
             | ParserResult.Failure(x, _, _) -> failwith x
 
+    let testAll parser l =
+        l |> List.map (fun v -> test parser v)
+
     [<TestMethod>]
     member this.``1 symbol list``() =
         let v = "(one)"
@@ -27,15 +30,30 @@ type ParserTests() =
     
     [<TestMethod>]
     member this.``Symbols``() =
-        let v = "(+ - foo)"
-        test Parser.parse v |> should equal (Identifier.List([ Identifier.Symbol("+"); Identifier.Symbol("-"); Identifier.Symbol("foo") ]))
+        let v = ["+"; "-"; "foo"]
+        testAll Parser.symbol v |> should equal [ Identifier.Symbol("+"); Identifier.Symbol("-"); Identifier.Symbol("foo") ]
 
     [<TestMethod>]
-    member this.``String literal``() =
-        let v = "(\"foo bar\" \"1'2_3\")"
-        test Parser.parse v |> should equal (Identifier.List([ Identifier.String("foo bar"); Identifier.String("1'2_3") ]))
+    member this.``String literals``() =
+        let v = ["\"foo bar\""; "\"1'2_3\""]
+        testAll Parser.stringLiteral v |> should equal [ Identifier.String("foo bar"); Identifier.String("1'2_3") ]
+
+    [<TestMethod>]
+    member this.``Integers``() =
+        let v = ["1"; "-20"]
+        testAll Parser.integer v |> should equal [ Identifier.Int(1); Identifier.Int(-20) ]
+
+    [<TestMethod>]
+    member this.``Booleans``() =
+        let v = ["#t"; "#f"]
+        testAll Parser.boolean v |> should equal [ Identifier.Bool(true); Identifier.Bool(false) ]
 
     [<TestMethod>]
     member this.``Heterogeneous list``() =
-        let v = "(+ \"bar\")"
-        test Parser.parse v |> should equal (Identifier.List([ Identifier.Symbol("+"); Identifier.String("bar") ]))
+        let v = "(+ \"bar\" 1 #t)"
+        test Parser.parse v |> should equal 
+            (Identifier.List(
+                [ Identifier.Symbol("+"); 
+                  Identifier.String("bar"); 
+                  Identifier.Int(1); 
+                  Identifier.Bool(true) ]))
