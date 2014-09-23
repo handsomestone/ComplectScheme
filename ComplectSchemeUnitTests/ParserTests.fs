@@ -57,3 +57,15 @@ type ParserTests() =
                   Identifier.String("bar"); 
                   Identifier.Int(1); 
                   Identifier.Bool(true) ]))
+
+    [<TestMethod>]
+    member this.``Nested lists``() =
+        let v = "(+ (foo 1 (\"bar\")) baz)"
+        test Parser.parse v |> should equal
+            (Identifier.List(
+                [ Identifier.Symbol("+");
+                  Identifier.List(
+                    [ Identifier.Symbol("foo");
+                      Identifier.Int(1);
+                      Identifier.List([ Identifier.String("bar") ]) ]);
+                  Identifier.Symbol("baz") ]))
