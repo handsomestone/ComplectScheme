@@ -3,6 +3,9 @@
     open System.Reflection
     open System.Reflection.Emit
 
+    open FParsec
+    open Parser
+
     type Value =
         | Bool of bool
         | Char of char
@@ -36,3 +39,22 @@
         | UnaryOperation of UnaryOp * Expr
         | VariableRef of Identifier * Type
     and Binding = Identifier * Expr
+
+    let parseExpr parse =
+        let rec parseAst ast =
+            match ast with
+//                | Identifier.List(l) ->
+//                    match l with
+//                        | [] -> () // TODO
+//                        | x :: [] -> ()
+//                        | x :: xs -> ()
+                | Identifier.Bool(b) -> Expr.Immediate(Value.Bool(b))
+                | Identifier.Char(c) -> Expr.Immediate(Value.Char(c))
+                | Identifier.Int(i) -> Expr.Immediate(Value.Int(i))
+                //| Identifier.Pair() -> ()
+        parseAst parse
+
+    let parseString s =
+        match (run Parser.parse s) with
+            | ParserResult.Success(x, _, _) -> parseExpr x
+            | ParserResult.Failure(x, _, _) -> failwith x

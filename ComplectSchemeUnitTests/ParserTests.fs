@@ -5,6 +5,7 @@ open FsUnit
 
 open FParsec
 open Parser
+open Expressions
 
 [<TestClass>]
 type ParserTests() =
@@ -102,3 +103,11 @@ type ParserTests() =
     member this.``Pairs, with int``() =
         let v = "(1.bar)"
         test Parser.pair v |> should equal (Identifier.Pair(Identifier.Int(1), Identifier.Symbol("bar")))
+
+[<TestClass>]
+type ExpressionParsing() =
+
+    [<TestMethod>]
+    member this.``Parse string``() =
+        let v = "(#t)"
+        parseString v |> should equal (Expr.Immediate(Value.Bool(true)))
