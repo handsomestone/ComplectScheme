@@ -13,6 +13,8 @@
         | List of Value list
         | Null
         | Pair of Value * Value
+        //| String of string
+        //| Symbol of string ???
 
     type Identifier = string
 
@@ -45,17 +47,36 @@
     let pairsFromList l =
         List.foldBack (fun t s -> Pair(t, s)) l (Value.Null)
 
+    let parseValue v =
+        match v with
+            | Identifier.Bool(b) -> Value.Bool(b)
+            | Identifier.Char(c) -> Value.Char(c)
+            | Identifier.Int(i) -> Value.Int(i)
+            | _ -> failwith "not a value"
+
+    let quote l =
+        Expr.Immediate(Value.List(l |> List.map parseValue))
+
     let parseExpr parse =
-        let rec parseValue ast =
+        let rec parseList l =
+            match l with
+                | Identifier.Symbol("quote") :: xs ->
+                    match xs with
+                        | Identifier.List(l) :: [] -> quote l
+                        | _ -> failwithf "wrong number of parts"
+
+        and parseExpr' ast =
             match ast with
-                | Identifier.Bool(b) -> Value.Bool(b)
-                | Identifier.Char(c) -> Value.Char(c)
-                | Identifier.Int(i) -> Value.Int(i)
-                | Identifier.List(l) -> Value.List(l |> List.map parseValue)
-                | Identifier.Pair(a, b) -> Value.Pair((parseValue a), (parseValue b))
-                | Identifier.String(s) -> failwith "string unsupported"
-                | Identifier.Symbol(s) -> failwith "symbol unsupported"
-        Expr.Immediate(parseValue parse)
+                | Identifier.Bool(b) -> Expr.Immediate(parseValue ast)
+                | Identifier.Char(c) -> Expr.Immediate(parseValue ast)
+                | Identifier.Int(i) -> Expr.Immediate(parseValue ast)
+                | Identifier.List(l) ->
+                    //Value.List(l |> List.map parseExpr')
+                    parseList l
+                //| Identifier.Pair(a, b) -> Expr.Immediate(Value.Pair((parseExpr' a), (parseExpr' b)))
+                //| Identifier.String(s) -> Value.String(s)
+                //| Identifier.Symbol(s) -> Value.Symbol(s)
+        parseExpr' parse
 
     let parseString s =
         match (run Parser.parse s) with

@@ -108,8 +108,8 @@ type ParserTests() =
 type ExpressionParsing() =
 
     [<TestMethod>]
-    member this.``Parse list``() =
-        let v = "(#t 1)"
+    member this.``Quoted list``() =
+        let v = "(quote (#t 1))"
         parseString v |> should equal (Expr.Immediate(Value.List([ Value.Bool(true); Value.Int(1) ])))
 
     [<TestMethod>]
