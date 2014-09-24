@@ -57,21 +57,26 @@
     let quote l =
         Expr.Immediate(Value.List(l |> List.map parseValue))
 
+    let tryQuote =
+        function
+            | Identifier.List(l) :: [] -> quote l
+            | _ -> failwithf "quote: wrong number of parts"
+
+    let parseApplication a args =
+        match a with
+            | "quote" -> tryQuote args
+            | _ -> failwithf "%s: undefined" a
+
     let parseExpr parse =
         let rec parseList l =
             match l with
-                | Identifier.Symbol("quote") :: xs ->
-                    match xs with
-                        | Identifier.List(l) :: [] -> quote l
-                        | _ -> failwithf "wrong number of parts"
-
+                | Identifier.Symbol(a) :: args -> parseApplication a args
         and parseExpr' ast =
             match ast with
                 | Identifier.Bool(b) -> Expr.Immediate(parseValue ast)
                 | Identifier.Char(c) -> Expr.Immediate(parseValue ast)
                 | Identifier.Int(i) -> Expr.Immediate(parseValue ast)
                 | Identifier.List(l) ->
-                    //Value.List(l |> List.map parseExpr')
                     parseList l
                 //| Identifier.Pair(a, b) -> Expr.Immediate(Value.Pair((parseExpr' a), (parseExpr' b)))
                 //| Identifier.String(s) -> Value.String(s)
