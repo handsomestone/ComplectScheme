@@ -5,12 +5,18 @@
     open Scope
 
     module TypeInference =
-        let inferValueType v =
+        let rec inferValueType v =
             match v with
                 | Bool(b) -> typeof<bool>
                 | Char(c) -> typeof<char>
                 | Int(i) -> typeof<int>
                 | Null -> typeof<obj>
+                | Pair(a, b) -> 
+                    let types = [| (inferValueType a); (inferValueType b) |]
+                    Type.GetType("System.Tuple`2").MakeGenericType(types)
+                | List(l) ->
+                    let rootPair = pairsFromList l
+                    inferValueType rootPair
 
         let inferBinaryOpType op =
             typeof<int>  // assume all built-in binary ops are int valued for now

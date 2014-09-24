@@ -10,7 +10,9 @@
         | Bool of bool
         | Char of char
         | Int of int
+        | List of Value list
         | Null
+        | Pair of Value * Value
 
     type Identifier = string
 
@@ -39,6 +41,9 @@
         | UnaryOperation of UnaryOp * Expr
         | VariableRef of Identifier * Type
     and Binding = Identifier * Expr
+
+    let pairsFromList l =
+        List.foldBack (fun t s -> Pair(t, s)) l (Value.Null)
 
     let parseExpr parse =
         let rec parseAst ast =
