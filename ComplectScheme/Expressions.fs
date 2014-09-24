@@ -46,18 +46,16 @@
         List.foldBack (fun t s -> Pair(t, s)) l (Value.Null)
 
     let parseExpr parse =
-        let rec parseAst ast =
+        let rec parseValue ast =
             match ast with
-//                | Identifier.List(l) ->
-//                    match l with
-//                        | [] -> () // TODO
-//                        | x :: [] -> ()
-//                        | x :: xs -> ()
-                | Identifier.Bool(b) -> Expr.Immediate(Value.Bool(b))
-                | Identifier.Char(c) -> Expr.Immediate(Value.Char(c))
-                | Identifier.Int(i) -> Expr.Immediate(Value.Int(i))
-                //| Identifier.Pair() -> ()
-        parseAst parse
+                | Identifier.Bool(b) -> Value.Bool(b)
+                | Identifier.Char(c) -> Value.Char(c)
+                | Identifier.Int(i) -> Value.Int(i)
+                | Identifier.List(l) -> Value.List(l |> List.map parseValue)
+                | Identifier.Pair(a, b) -> Value.Pair((parseValue a), (parseValue b))
+                | Identifier.String(s) -> failwith "string unsupported"
+                | Identifier.Symbol(s) -> failwith "symbol unsupported"
+        Expr.Immediate(parseValue parse)
 
     let parseString s =
         match (run Parser.parse s) with

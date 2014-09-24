@@ -61,4 +61,4 @@
     do idValueRef := choice [ (attempt pair); list; stringLiteral; integer; char; boolean; symbol ]
 
     // Top-level form should be a list
-    let parse = list
+    let parse = idValue
