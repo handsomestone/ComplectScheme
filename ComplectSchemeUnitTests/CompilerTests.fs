@@ -44,7 +44,7 @@ module CompilerWrapper =
 open CompilerWrapper
 
 [<TestClass>]
-type PrimitiveTypes() = 
+type Values() = 
 
     [<TestMethod>]
     member this.``Int immediate value``() =
@@ -73,6 +73,20 @@ type PrimitiveTypes() =
         let ret = compileAndRunExpr expr
 
         ret |> should equal null
+
+    [<TestMethod>]
+    member this.``List of ints``() =
+        let expr = Expr.Immediate(Value.List([Value.Int(1); Value.Int(2)]))
+        let ret = compileAndRunExpr expr
+
+        ret |> should equal [1; 2]
+
+    [<TestMethod>]
+    member this.``Pair of ints``() =
+        let expr = Expr.Immediate(Value.Pair(Value.Int(1), Value.Int(2)))
+        let ret = compileAndRunExpr expr
+
+        ret |> should equal (System.Tuple<int, int>(1, 2))
 
 [<TestClass>]
 type UnaryOperations() =

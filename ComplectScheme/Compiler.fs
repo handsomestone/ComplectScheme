@@ -25,7 +25,10 @@ module Compiler =
             ilGen.Emit(OpCodes.Ceq)
 
     type ExpressionCompiler(ilGen : ILGenerator, typeDef : TypeDef) =
-        let emitValue (value : Value) =
+        let emitNewObj (ctor : ConstructorInfo) =
+            ilGen.Emit(OpCodes.Newobj, ctor)
+
+        let rec emitValue (value : Value) =
             match value with
                 | Bool(b) ->
                     if b then 
@@ -34,7 +37,14 @@ module Compiler =
                         ilGen.Emit(OpCodes.Ldc_I4_0)
                 | Char(c) -> ilGen.Emit(OpCodes.Ldc_I4_S, int c)
                 | Int(i) -> ilGen.Emit(OpCodes.Ldc_I4, i)
+                | List(l) -> ()
                 | Null -> ilGen.Emit(OpCodes.Ldnull)
+                | Pair(a, b) ->
+                    emitValue a
+                    emitValue b
+                    let tupleType = TypeInference.inferValueType value
+                    let types = tupleType.GetGenericArguments()
+                    emitNewObj (tupleType.GetConstructor(types))
 
         let emitUnaryOp op =
             match op with
@@ -130,9 +140,6 @@ module Compiler =
             let stgLoc = LocalStorage(localVarDef)
             ilGen.Emit(OpCodes.Stloc, localBuilder)
             (name, stgLoc)
-
-        let emitNewObj (ctor : ConstructorInfo) =
-            ilGen.Emit(OpCodes.Newobj, ctor)
             
         member this.CompileExpression (expr : Expr) (returnType : Type) (env : Env) =
             let rec emitExpr expr env =
@@ -167,7 +174,7 @@ module Compiler =
                         let invokeMethod = lambdaType.Functions |> List.find (fun f -> f.Name = "Invoke")
                         let invokeType = getLambdaFuncType invokeMethod
                         ilGen.Emit(OpCodes.Ldftn, invokeMethod.GetBuilder())
-                        ilGen.Emit(OpCodes.Newobj, invokeType.GetConstructor([| typeof<obj>; typeof<IntPtr> |]))
+                        emitNewObj (invokeType.GetConstructor([| typeof<obj>; typeof<IntPtr> |]))
                     | FunctionCall(e, bindings) ->
                         emitExpr e env
                         let paramTypes =

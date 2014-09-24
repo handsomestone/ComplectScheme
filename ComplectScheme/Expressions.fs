@@ -7,7 +7,9 @@
         | Bool of bool
         | Char of char
         | Int of int
+        | List of Value list
         | Null
+        | Pair of Value * Value
 
     type Identifier = string
 
