@@ -38,3 +38,6 @@
         | UnaryOperation of UnaryOp * Expr
         | VariableRef of Identifier * Type
     and Binding = Identifier * Expr
+
+    let pairsFromList l =
+        List.foldBack (fun t s -> Pair(t, s)) l (Value.Null)

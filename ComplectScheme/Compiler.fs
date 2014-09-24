@@ -37,7 +37,9 @@ module Compiler =
                         ilGen.Emit(OpCodes.Ldc_I4_0)
                 | Char(c) -> ilGen.Emit(OpCodes.Ldc_I4_S, int c)
                 | Int(i) -> ilGen.Emit(OpCodes.Ldc_I4, i)
-                | List(l) -> ()
+                | List(l) ->
+                    let rootPair = pairsFromList l
+                    emitValue rootPair
                 | Null -> ilGen.Emit(OpCodes.Ldnull)
                 | Pair(a, b) ->
                     emitValue a

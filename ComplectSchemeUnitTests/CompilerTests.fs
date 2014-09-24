@@ -1,5 +1,6 @@
 ﻿namespace ComplectScheme.UnitTests
 
+open System
 open System.Reflection.Emit
 open Microsoft.VisualStudio.TestTools.UnitTesting
 open FsUnit
@@ -79,7 +80,7 @@ type Values() =
         let expr = Expr.Immediate(Value.List([Value.Int(1); Value.Int(2)]))
         let ret = compileAndRunExpr expr
 
-        ret |> should equal [1; 2]
+        ret |> should equal (Tuple.Create(1, Tuple.Create(2, null)))
 
     [<TestMethod>]
     member this.``Pair of ints``() =

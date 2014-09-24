@@ -14,6 +14,9 @@
                 | Pair(a, b) -> 
                     let types = [| (inferValueType a); (inferValueType b) |]
                     Type.GetType("System.Tuple`2").MakeGenericType(types)
+                | List(l) ->
+                    let rootPair = pairsFromList l
+                    inferValueType rootPair
 
         let inferBinaryOpType op =
             typeof<int>  // assume all built-in binary ops are int valued for now
