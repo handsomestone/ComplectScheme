@@ -55,11 +55,6 @@ type ParserTests() =
         testAll Parser.parse v |> should equal [ Identifier.Bool(true); Identifier.Bool(false) ]
 
     [<TestMethod>]
-    member this.``Valid Booleans``() =
-        let v = ["#x"; "#f"]
-        testAll Parser.parse v |> should equal
-
-    [<TestMethod>]
     member this.``Characters``() =
         let v = ["#\\A"; "#\\f"]
         testAll Parser.parse v |> should equal [ Identifier.Char('A'); Identifier.Char('f') ]
