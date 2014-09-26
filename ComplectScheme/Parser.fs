@@ -65,13 +65,23 @@
     let quote =
         str "'" >>. idValue |>> (fun x -> Identifier.List([Identifier.Symbol("quote"); x]))
 
+    // TODO -- nested comments
     let lineComment =
         str ";" >>. restOfLine false |>> Identifier.Comment
 
     // Defines the recursive parser to be a choice over the existing parsers
     // NOTE -- symbol should be last as it is the most greedy
     // pair and list are ambiguous, the "attempt" around pair allows us to backtrack if we need to try list as well.
-    do idValueRef := choice [ lineComment; quote; (attempt pair); list; stringLiteral; integer; char; boolean; symbol ]
+    do idValueRef := choice [ 
+        lineComment;  // ; comment
+        quote;  // '<val>
+        (attempt pair);  // ( <val> . <val> )
+        list;  // ( <val> ... )
+        stringLiteral;  // "<char>..."
+        integer;  // <int>
+        char;  // #\<char>
+        boolean;  // #t or #f
+        symbol ]  // <chars>
 
     // Top-level form should be a list
     let parse = idValue
