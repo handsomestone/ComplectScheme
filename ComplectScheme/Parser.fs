@@ -11,7 +11,7 @@
         | Pair of Identifier * Identifier
 
     // Characters and string functions
-    let reservedChars = Set.ofList [ '('; ')'; '\''; '.' ]
+    let reservedChars = Set.ofList [ '('; ')'; '['; ']'; '{'; '}'; '\''; '.' ]
     let isPunc c = System.Char.IsPunctuation(c)
     let isSymbol c = System.Char.IsSymbol(c)
     let isReserved c = reservedChars |> Set.contains c
@@ -19,12 +19,18 @@
     let validChars c = (isLetter c || isDigit c || isPunc c || isSymbol c) && not (isReserved c)
 
     // Convenience functions
-    let str s = pstring s    
+    let str s = pstring s
+    
+    let inBrackets bopen bclose p =
+            between (str bopen) (str bclose) p
+
     let listOf pElement f =
-        between (str "(") (str ")") (spaces >>. sepBy pElement spaces1 |>> f)
+        let p = (spaces >>. sepBy pElement spaces1 |>> f)
+        inBrackets "(" ")" p <|> inBrackets "[" "]" p <|> inBrackets "{" "}" p
 
     let pairOf pElement f =
-        between (str "(") (str ")") (pipe3 (spaces >>. pElement) (spaces >>. str "." .>> spaces) (pElement .>> spaces) (fun a b c -> a, c)) |>> f
+        let p = (pipe3 (spaces >>. pElement) (spaces >>. str "." .>> spaces) (pElement .>> spaces) (fun a b c -> a, c)) |>> f
+        inBrackets "(" ")" p <|> inBrackets "[" "]" p <|> inBrackets "{" "}" p
 
     // Forward declaration of parser, needed for recursive parser
     let idValue, idValueRef = createParserForwardedToRef<Identifier, unit>()

@@ -35,6 +35,17 @@ type ParserTests() =
         test Parser.parse v |> should equal (Identifier.List([ Identifier.Symbol("one"); Identifier.Symbol("two"); Identifier.Symbol("three") ]))
     
     [<TestMethod>]
+    member this.``List with []``() =
+        let v = "[one two]"
+        test Parser.parse v |> should equal (Identifier.List([ Identifier.Symbol("one"); Identifier.Symbol("two") ]))
+    
+    [<TestMethod>]
+    member this.``List with {}``() =
+        let v = "{one two}"
+        test Parser.parse v |> should equal (Identifier.List([ Identifier.Symbol("one"); Identifier.Symbol("two") ]))
+    
+
+    [<TestMethod>]
     member this.``Symbols``() =
         let v = ["+"; "-"; "foo"]
         testAll Parser.parse v |> should equal [ Identifier.Symbol("+"); Identifier.Symbol("-"); Identifier.Symbol("foo") ]
@@ -85,8 +96,18 @@ type ParserTests() =
                   Identifier.Symbol("baz") ]))
 
     [<TestMethod>]
-    member this.``Pairs``() =
+    member this.``Pair in ()``() =
         let v = "(foo . bar)"
+        test Parser.parse v |> should equal (Identifier.Pair(Identifier.Symbol("foo"), Identifier.Symbol("bar")))
+
+    [<TestMethod>]
+    member this.``Pair in []``() =
+        let v = "[foo . bar]"
+        test Parser.parse v |> should equal (Identifier.Pair(Identifier.Symbol("foo"), Identifier.Symbol("bar")))
+
+    [<TestMethod>]
+    member this.``Pair in {}``() =
+        let v = "{foo . bar}"
         test Parser.parse v |> should equal (Identifier.Pair(Identifier.Symbol("foo"), Identifier.Symbol("bar")))
 
     [<TestMethod>]
