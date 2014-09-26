@@ -99,6 +99,16 @@ type ParserTests() =
         let v = "(1.bar)"
         test Parser.parse v |> should equal (Identifier.Pair(Identifier.Int(1), Identifier.Symbol("bar")))
 
+    [<TestMethod>]
+    member this.``Quoted list``() =
+        let v = "'(foo bar)"
+        test Parser.parse v |> should equal (Identifier.List([ Identifier.Symbol("quote"); Identifier.List([ Identifier.Symbol("foo"); Identifier.Symbol("bar") ]) ]))
+
+    [<TestMethod>]
+    member this.``Quoted value``() =
+        let v = "'foo"
+        test Parser.parse v |> should equal (Identifier.List([ Identifier.Symbol("quote"); Identifier.Symbol("foo") ]))
+
 [<TestClass>]
 type ExpressionParsing() =
 
