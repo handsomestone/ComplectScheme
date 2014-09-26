@@ -43,7 +43,6 @@ type ParserTests() =
     member this.``List with {}``() =
         let v = "{one two}"
         test Parser.parse v |> should equal (Identifier.List([ Identifier.Symbol("one"); Identifier.Symbol("two") ]))
-    
 
     [<TestMethod>]
     member this.``Symbols``() =
@@ -129,6 +128,11 @@ type ParserTests() =
     member this.``Quoted value``() =
         let v = "'foo"
         test Parser.parse v |> should equal (Identifier.List([ Identifier.Symbol("quote"); Identifier.Symbol("foo") ]))
+
+    [<TestMethod>]
+    member this.``Line comment``() =
+        let v = "#t ; this is a comment\n#f"
+        test Parser.parseAll v |> should equal [ Identifier.Bool(true); Identifier.Comment(" this is a comment"); Identifier.Bool(false) ]
 
 [<TestClass>]
 type ExpressionParsing() =
