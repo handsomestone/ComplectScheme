@@ -9,6 +9,7 @@
         | String of string
         | Bool of bool
         | Pair of Identifier * Identifier
+        | Comment of string
 
     // Characters and string functions
     let reservedChars = Set.ofList [ '('; ')'; '['; ']'; '{'; '}'; '\''; '.' ]
@@ -64,10 +65,16 @@
     let quote =
         str "'" >>. idValue |>> (fun x -> Identifier.List([Identifier.Symbol("quote"); x]))
 
+    let lineComment =
+        str ";" >>. restOfLine false |>> Identifier.Comment
+
     // Defines the recursive parser to be a choice over the existing parsers
     // NOTE -- symbol should be last as it is the most greedy
     // pair and list are ambiguous, the "attempt" around pair allows us to backtrack if we need to try list as well.
-    do idValueRef := choice [ quote; (attempt pair); list; stringLiteral; integer; char; boolean; symbol ]
+    do idValueRef := choice [ lineComment; quote; (attempt pair); list; stringLiteral; integer; char; boolean; symbol ]
 
     // Top-level form should be a list
     let parse = idValue
+
+    // Parse multiple "statements"
+    let parseAll = spaces >>. many (idValue .>> spaces)
