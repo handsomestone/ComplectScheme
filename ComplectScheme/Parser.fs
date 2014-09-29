@@ -23,6 +23,8 @@
         | Constant of Constant
         | Variable of Identifier
         | Quote of Datum
+        | IfThen of Expression * Expression
+        | IfThenElse of Expression * Expression * Expression
         //| Lamda of Formals * Body
     //and Formals = Variable list
     //and Body = Definition * Expression
@@ -62,7 +64,7 @@
         inAnyBrackets p
 
     let listForm pFirst pRest =
-        let p = (spaces >>. pFirst >>. spaces1 >>. pRest)
+        let p = (spaces >>. pFirst >>. spaces1 >>. pRest .>> spaces)
         inAnyBrackets p
 
     let pairOf pElement =
@@ -107,6 +109,12 @@
     let pVariable =
         pIdentifier
 
+    let pIfThen =
+        listForm (str "if") ((pExpr .>> spaces1) .>>. pExpr)
+
+    let pIfThenElse =
+        listForm (str "if") (tuple3 (pExpr .>> spaces1) (pExpr .>> spaces1) pExpr)
+
     // TODO -- nested comments
 //    let lineComment =
 //        str ";" >>. restOfLine false |>> Datum.Comment
@@ -119,20 +127,25 @@
             pInteger |>> Datum.Number;
             pChar |>> Datum.Character;
             pBoolean |>> Datum.Boolean;
-            pSymbol |>> Datum.Symbol ]
+            pSymbol |>> Datum.Symbol; 
+            ]
 
     let constant =
         choice [
             pStringLiteral |>> Constant.String;
             pInteger |>> Constant.Number;
             pChar |>> Constant.Character;
-            pBoolean |>> Constant.Boolean ]
+            pBoolean |>> Constant.Boolean; 
+            ]
 
-    do pExprRef := choice [ 
-        constant |>> Expression.Constant;
-        pVariable |>> Expression.Variable;
-        pQuote |>> Expression.Quote;
-        ]
+    do pExprRef := 
+        choice [ 
+            constant |>> Expression.Constant;
+            pVariable |>> Expression.Variable;
+            attempt (pIfThen |>> Expression.IfThen);
+            attempt (pIfThenElse |>> Expression.IfThenElse);
+            attempt (pQuote |>> Expression.Quote);
+            ]
 
     // Top-level form should be a list
     let parseExpr = pExpr

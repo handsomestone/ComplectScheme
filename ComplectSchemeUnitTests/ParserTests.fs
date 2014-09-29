@@ -179,14 +179,31 @@ type ExpressionTests() =
         test Parser.parseExpr v |> should equal (Expression.Constant(Constant.String("foo")))
 
     [<TestMethod>]
-        member this.``Number constant``() =
-            let v = "123"
-            test Parser.parseExpr v |> should equal (Expression.Constant(Constant.Number(123)))
+    member this.``Number constant``() =
+        let v = "123"
+        test Parser.parseExpr v |> should equal (Expression.Constant(Constant.Number(123)))
 
     [<TestMethod>]
-        member this.``Character constant``() =
-            let v = "#\\a"
-            test Parser.parseExpr v |> should equal (Expression.Constant(Constant.Character('a')))
+    member this.``Character constant``() =
+        let v = "#\\a"
+        test Parser.parseExpr v |> should equal (Expression.Constant(Constant.Character('a')))
+
+    [<TestMethod>]
+    member this.``If then``() =
+        let v = "(if #t 'foo)"
+        test Parser.parseExpr v |> should equal 
+            (Expression.IfThen(
+                Expression.Constant(Constant.Boolean(true)),
+                Expression.Quote(Datum.Symbol("foo"))))
+
+    [<TestMethod>]
+    member this.``If then else``() =
+        let v = "(if #t 'foo 'bar)"
+        test Parser.parseExpr v |> should equal 
+            (Expression.IfThenElse(
+                Expression.Constant(Constant.Boolean(true)),
+                Expression.Quote(Datum.Symbol("foo")),
+                Expression.Quote(Datum.Symbol("bar"))))
 
 //    [<TestMethod>]
 //    member this.``Line comment``() =
