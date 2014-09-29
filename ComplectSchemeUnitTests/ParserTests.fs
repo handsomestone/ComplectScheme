@@ -113,14 +113,32 @@ type DatumTests() =
         test Parser.parseDatum v |> should equal (Datum.Pair(Datum.Symbol("foo"), Datum.Symbol("bar")))
 
     [<TestMethod>]
-    member this.``Pairs, no space``() =
-        let v = "(foo.bar)"
-        test Parser.parseDatum v |> should equal (Datum.Pair(Datum.Symbol("foo"), Datum.Symbol("bar")))
-
-    [<TestMethod>]
     member this.``Pairs, with int``() =
         let v = "(1.bar)"
         test Parser.parseDatum v |> should equal (Datum.Pair(Datum.Number(1), Datum.Symbol("bar")))
+
+    [<TestMethod>]
+    member this.``Symbol with dot``() =
+        let v = "(foo.bar)"
+        test Parser.pDatum v |> should equal (Datum.List([ Datum.Symbol("foo.bar") ]))
+
+[<TestClass>]
+type IdentifierTests() =
+    
+    [<TestMethod>]
+    member this.``Alphanumeric``() =
+        let v = "foo123"
+        test Parser.pIdentifier v |> should equal "foo123"
+        
+    [<TestMethod>]
+    member this.``Starts with hash``() =
+        let v = "#foo123"
+        (fun () -> test Parser.pIdentifier v |> ignore) |> should throw typeof<System.Exception>
+
+    [<TestMethod>]
+    member this.``Contains hash``() =
+        let v = "a#foo123"
+        test Parser.pIdentifier v |> should equal "a#foo123"
 
 [<TestClass>]
 type ExpressionTests() =
@@ -134,26 +152,9 @@ type ExpressionTests() =
     member this.``Quoted value``() =
         let v = "'foo"
         test Parser.parseExpr v |> should equal (Expression.Quote(Datum.Symbol("foo")))
+        
 
 //    [<TestMethod>]
 //    member this.``Line comment``() =
 //        let v = "#t ; this is a comment\n#f"
 //        test Parser.parseAll v |> should equal [ Datum.Boolean(true); Datum.Comment(" this is a comment"); Datum.Boolean(false) ]
-
-//[<TestClass>]
-//type ExpressionParsing() =
-//
-//    [<TestMethod>]
-//    member this.``Quoted list``() =
-//        let v = "(quote (#t 1))"
-//        parseString v |> should equal (Expr.Immediate(Value.List([ Value.Boolean(true); Value.Number(1) ])))
-//
-//    [<TestMethod>]
-//    member this.``Parse bool``() =
-//        let v = "#t"
-//        parseString v |> should equal (Expr.Immediate(Value.Boolean(true)))
-//
-//    [<TestMethod>]
-//    member this.``Parse int``() =
-//        let v = "3"
-//        parseString v |> should equal (Expr.Immediate(Value.Number(3)))

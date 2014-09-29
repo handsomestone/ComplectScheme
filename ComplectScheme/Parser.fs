@@ -1,8 +1,7 @@
 ﻿module Parser
     open FParsec
 
-    type Identifier = Identifier of string
-    type Variable = Variable of Identifier
+    type Identifier = string
 
     type Constant =
         | Character of char
@@ -22,23 +21,36 @@
 
     type Expression =
         | Constant of Constant
-        | Variable of Variable
+        | Variable of Identifier
         | Quote of Datum
         //| Lamda of Formals * Body
     //and Formals = Variable list
     //and Body = Definition * Expression
 
     // Characters and string functions
+    let str s = pstring s
+    
     let reservedChars = Set.ofList [ '('; ')'; '['; ']'; '{'; '}'; '\''; '.' ]
     let isPunc c = System.Char.IsPunctuation(c)
     let isSymbol c = System.Char.IsSymbol(c)
     let isReserved c = reservedChars |> Set.contains c
     let validStringContents c = c <> '"'
-    let validChars c = (isLetter c || isDigit c || isPunc c || isSymbol c) && not (isReserved c)
 
-    // Convenience functions
-    let str s = pstring s
-    
+    let pSymbolEscape = 
+        str "\\" >>. anyChar 
+        // <|> str "|" >>. manySatisfy (isNoneOf [ '|' ])
+
+    let pInitial = 
+        letter <|>
+        digit <|>
+        pSymbolEscape <|>
+        satisfy (isAnyOf [ '.'; '+'; '-'; '!'; '$'; '%'; '&'; '*'; '/'; ':'; '<'; '='; '>'; '?'; '~'; '_'; '^'; '@' ])
+    let pSubsequent =
+        pInitial <|> pchar '#'
+
+    let pIdentifier =
+        many1Chars2 pInitial pSubsequent
+
     let inBrackets bopen bclose p =
             between (str bopen) (str bclose) p
 
@@ -56,33 +68,36 @@
     let pExpr, pExprRef = createParserForwardedToRef<Expression, unit>()
 
     // ( ... )
-    let list =
+    let pList =
         listOf pDatum
 
     // non-quoted string
-    let symbol =
-        (many1Satisfy validChars)
+    let pSymbol =
+        pIdentifier
 
     // quoted string
-    let stringLiteral =
+    let pStringLiteral =
         // TODO -- implement escape characters
         between (str "\"") (str "\"") (manySatisfy validStringContents)
 
-    let integer =
+    let pInteger =
         pint32
 
-    let boolean =
+    let pBoolean =
         stringReturn "#t" true
         <|> stringReturn "#f" false
 
-    let char =
+    let pChar =
         str "#\\" >>. anyChar
 
-    let pair =
+    let pPair =
         pairOf pDatum
 
-    let quote =
+    let pQuote =
         str "'" >>. pDatum
+
+    let pVariable =
+        pIdentifier
 
     // TODO -- nested comments
 //    let lineComment =
@@ -90,29 +105,25 @@
 
     do pDatumRef :=
         choice [ 
-            attempt (pair |>> Datum.Pair);  // ( <val> . <val> )
-            list |>> Datum.List;  // ( <val> ... )
-            stringLiteral |>> Datum.String;  // "<char>..."
-            integer |>> Datum.Number;  // <int>
-            char |>> Datum.Character;  // #\<char>
-            boolean |>> Datum.Boolean;  // #t or #f
-            symbol |>> Datum.Symbol ]  // <chars>]
+            attempt (pPair |>> Datum.Pair);
+            pList |>> Datum.List;
+            pStringLiteral |>> Datum.String;
+            pInteger |>> Datum.Number;
+            pChar |>> Datum.Character;
+            pBoolean |>> Datum.Boolean;
+            pSymbol |>> Datum.Symbol ]
 
     let constant =
         choice [
-            stringLiteral |>> Constant.String;  // "<char>..."
-            integer |>> Constant.Number;  // <int>
-            char |>> Constant.Character;  // #\<char>
-            boolean |>> Constant.Boolean ]  // #t or #f
+            pStringLiteral |>> Constant.String;
+            pInteger |>> Constant.Number;
+            pChar |>> Constant.Character;
+            pBoolean |>> Constant.Boolean ]
 
-    // Defines the recursive parser to be a choice over the existing parsers
-    // NOTE -- symbol should be last as it is the most greedy
-    // pair and list are ambiguous, the "attempt" around pair allows us to backtrack if we need to try list as well.
     do pExprRef := choice [ 
         constant |>> Expression.Constant;
-        //lineComment;  // ; comment
-        quote |>> Expression.Quote;  // '<val>
-        //(attempt pair);  // ( <val> . <val> )
+        pVariable |>> Expression.Variable;
+        pQuote |>> Expression.Quote;  // '<val>
         ]
 
     // Top-level form should be a list
