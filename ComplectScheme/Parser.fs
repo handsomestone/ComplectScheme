@@ -25,6 +25,7 @@
         | Quote of Datum
         | IfThen of Expression * Expression
         | IfThenElse of Expression * Expression * Expression
+        | Application of Expression * Expression list
         //| Lamda of Formals * Body
     //and Formals = Variable list
     //and Body = Definition * Expression
@@ -64,7 +65,11 @@
         inAnyBrackets p
 
     let listForm pFirst pRest =
-        let p = (spaces >>. pFirst >>. spaces1 >>. pRest .>> spaces)
+        let p = ((spaces >>. pFirst .>> spaces1) .>>. pRest .>> spaces)
+        inAnyBrackets p
+
+    let listFormIgnore1 pFirst pRest =
+        let p = (spaces >>. pFirst .>> spaces1 >>. pRest .>> spaces)
         inAnyBrackets p
 
     let pairOf pElement =
@@ -104,16 +109,19 @@
 
     let pQuote =
         str "'" .>> spaces >>. pDatum
-        <|> listForm (str "quote") pDatum
+        <|> listFormIgnore1 (str "quote") pDatum
 
     let pVariable =
         pIdentifier
 
     let pIfThen =
-        listForm (str "if") ((pExpr .>> spaces1) .>>. pExpr)
+        listFormIgnore1 (str "if") ((pExpr .>> spaces1) .>>. pExpr)
 
     let pIfThenElse =
-        listForm (str "if") (tuple3 (pExpr .>> spaces1) (pExpr .>> spaces1) pExpr)
+        listFormIgnore1 (str "if") (tuple3 (pExpr .>> spaces1) (pExpr .>> spaces1) pExpr)
+
+    let pApplication =
+        listForm pExpr (sepEndBy pExpr spaces1)
 
     // TODO -- nested comments
 //    let lineComment =
@@ -145,6 +153,7 @@
             attempt (pIfThen |>> Expression.IfThen);
             attempt (pIfThenElse |>> Expression.IfThenElse);
             attempt (pQuote |>> Expression.Quote);
+            attempt (pApplication |>> Expression.Application)
             ]
 
     // Top-level form should be a list

@@ -205,6 +205,14 @@ type ExpressionTests() =
                 Expression.Quote(Datum.Symbol("foo")),
                 Expression.Quote(Datum.Symbol("bar"))))
 
+    [<TestMethod>]
+    member this.``Application``() =
+        let v = "(func 'foo #t)"
+        test Parser.parseExpr v |> should equal 
+            (Expression.Application(
+                Expression.Variable("func"), 
+                [ Expression.Quote(Datum.Symbol("foo")); Expression.Constant(Constant.Boolean(true)) ]))
+
 //    [<TestMethod>]
 //    member this.``Line comment``() =
 //        let v = "#t ; this is a comment\n#f"
