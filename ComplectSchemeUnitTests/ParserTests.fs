@@ -163,6 +163,31 @@ type ExpressionTests() =
         let v = "(quote (foo bar))"
         test Parser.parseExpr v |> should equal (Expression.Quote(Datum.List([ Datum.Symbol("foo"); Datum.Symbol("bar") ])))
 
+    [<TestMethod>]
+    member this.``Variable``() =
+        let v = "foo"
+        test Parser.parseExpr v |> should equal (Expression.Variable("foo"))
+
+    [<TestMethod>]
+    member this.``Boolean constant``() =
+        let v = "#t"
+        test Parser.parseExpr v |> should equal (Expression.Constant(Constant.Boolean(true)))
+
+    [<TestMethod>]
+    member this.``String constant``() =
+        let v = "\"foo\""
+        test Parser.parseExpr v |> should equal (Expression.Constant(Constant.String("foo")))
+
+    [<TestMethod>]
+        member this.``Number constant``() =
+            let v = "123"
+            test Parser.parseExpr v |> should equal (Expression.Constant(Constant.Number(123)))
+
+    [<TestMethod>]
+        member this.``Character constant``() =
+            let v = "#\\a"
+            test Parser.parseExpr v |> should equal (Expression.Constant(Constant.Character('a')))
+
 //    [<TestMethod>]
 //    member this.``Line comment``() =
 //        let v = "#t ; this is a comment\n#f"
