@@ -98,6 +98,11 @@ type DatumTests() =
                   Datum.Symbol("baz") ]))
 
     [<TestMethod>]
+    member this.``List with spaces before and after``() =
+        let v = "( foo  bar )"
+        test Parser.parseDatum v |> should equal (Datum.List([ Datum.Symbol("foo"); Datum.Symbol("bar") ]))
+
+    [<TestMethod>]
     member this.``Pair in ()``() =
         let v = "(foo . bar)"
         test Parser.parseDatum v |> should equal (Datum.Pair(Datum.Symbol("foo"), Datum.Symbol("bar")))
@@ -144,15 +149,19 @@ type IdentifierTests() =
 type ExpressionTests() =
 
     [<TestMethod>]
-    member this.``Quoted list``() =
+    member this.``' list``() =
         let v = "'(foo bar)"
         test Parser.parseExpr v |> should equal (Expression.Quote(Datum.List([ Datum.Symbol("foo"); Datum.Symbol("bar") ])))
 
     [<TestMethod>]
-    member this.``Quoted value``() =
+    member this.``' value``() =
         let v = "'foo"
         test Parser.parseExpr v |> should equal (Expression.Quote(Datum.Symbol("foo")))
-        
+    
+    [<TestMethod>]
+    member this.``Quoted list``() =
+        let v = "(quote (foo bar))"
+        test Parser.parseExpr v |> should equal (Expression.Quote(Datum.List([ Datum.Symbol("foo"); Datum.Symbol("bar") ])))
 
 //    [<TestMethod>]
 //    member this.``Line comment``() =

@@ -54,13 +54,20 @@
     let inBrackets bopen bclose p =
             between (str bopen) (str bclose) p
 
-    let listOf pElement =
-        let p = (spaces >>. sepBy pElement spaces1)
+    let inAnyBrackets p =
         inBrackets "(" ")" p <|> inBrackets "[" "]" p <|> inBrackets "{" "}" p
+
+    let listOf pElement =
+        let p = (spaces >>. sepEndBy pElement spaces1)
+        inAnyBrackets p
+
+    let listForm pFirst pRest =
+        let p = (spaces >>. pFirst >>. spaces1 >>. pRest)
+        inAnyBrackets p
 
     let pairOf pElement =
         let p = (pipe3 (spaces >>. pElement) (spaces >>. str "." .>> spaces) (pElement .>> spaces) (fun a b c -> a, c))
-        inBrackets "(" ")" p <|> inBrackets "[" "]" p <|> inBrackets "{" "}" p
+        inAnyBrackets p
 
     // Forward declaration of parser, needed for recursive parser
     let pDatum, pDatumRef = createParserForwardedToRef<Datum, unit>()
@@ -94,7 +101,8 @@
         pairOf pDatum
 
     let pQuote =
-        str "'" >>. pDatum
+        str "'" .>> spaces >>. pDatum
+        <|> listForm (str "quote") pDatum
 
     let pVariable =
         pIdentifier
@@ -123,7 +131,7 @@
     do pExprRef := choice [ 
         constant |>> Expression.Constant;
         pVariable |>> Expression.Variable;
-        pQuote |>> Expression.Quote;  // '<val>
+        pQuote |>> Expression.Quote;
         ]
 
     // Top-level form should be a list
