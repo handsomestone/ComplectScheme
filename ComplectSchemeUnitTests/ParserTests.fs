@@ -235,3 +235,15 @@ type ExpressionTests() =
 //    member this.``Line comment``() =
 //        let v = "#t ; this is a comment\n#f"
 //        test Parser.parseAll v |> should equal [ Datum.Boolean(true); Datum.Comment(" this is a comment"); Datum.Boolean(false) ]
+
+[<TestClass>]
+type DefinitionTests() =
+    
+    [<TestMethod>]
+    member this.``Variable expression def``() =
+        let v = "(define foo #t)"
+        test Parser.parseDefinition v |> should equal
+            (Definition.VariableDef(
+                VariableDef.VariableExpr(
+                    "foo", 
+                    Expression.Constant(Constant.Boolean(true)))))

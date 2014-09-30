@@ -20,7 +20,9 @@
         | Pair of Datum * Datum
     and List = Datum list
 
-    type Expression =
+    type Definition =
+        | VariableDef of VariableDef
+    and Expression =
         | Constant of Constant
         | Variable of Identifier
         | Quote of Datum
@@ -30,6 +32,8 @@
         | LetSyntax of SyntaxBinding list * Expression list
         | LetRecSyntax of SyntaxBinding list * Expression list
     and SyntaxBinding = Keyword * Expression
+    and VariableDef =
+        | VariableExpr of Identifier * Expression
 
     // Characters and string functions
     let str s = pstring s
@@ -85,8 +89,8 @@
 
     // Forward declaration of parser, needed for recursive parser
     let pDatum, pDatumRef = createParserForwardedToRef<Datum, unit>()
-
     let pExpr, pExprRef = createParserForwardedToRef<Expression, unit>()
+    let pDef, pDefRef = createParserForwardedToRef<Definition, unit>()
 
     // ( ... )
     let pList =
@@ -142,6 +146,16 @@
     let pLetRecSyntax =
         listFormIgnore1 (str "letrec-syntax") (pTuple2WithSpaces (listOf pSyntaxBinding) (sepEndBy pExpr spaces1))
 
+    let pVariableExprDef =
+        pTuple2WithSpaces pVariable pExpr
+
+    let pVariableDef =
+        let defBody = 
+            choice [
+                pVariableExprDef |>> VariableExpr
+                ]
+        listFormIgnore1 (str "define") defBody
+
     // TODO -- nested comments
 //    let lineComment =
 //        str ";" >>. restOfLine false |>> Datum.Comment
@@ -174,12 +188,16 @@
             attempt (pQuote |>> Expression.Quote);
             attempt (pLetSyntax |>> Expression.LetSyntax)
             attempt (pLetRecSyntax |>> Expression.LetRecSyntax)
-            attempt (pApplication |>> Expression.Application)
+            attempt (pApplication |>> Expression.Application);
             ]
 
-    // Top-level form should be a list
-    let parseExpr = pExpr
+    do pDefRef :=
+        choice [
+            pVariableDef |>> Definition.VariableDef;
+            ]
 
+    let parseDefinition = pDef
+    let parseExpr = pExpr
     let parseDatum = pDatum
 
     // Parse multiple "statements"
