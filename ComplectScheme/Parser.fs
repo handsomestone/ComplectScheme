@@ -2,6 +2,7 @@
     open FParsec
 
     type Identifier = string
+    type Keyword = string
 
     type Constant =
         | Character of char
@@ -26,9 +27,9 @@
         | IfThen of Expression * Expression
         | IfThenElse of Expression * Expression * Expression
         | Application of Expression * Expression list
-        //| Lamda of Formals * Body
-    //and Formals = Variable list
-    //and Body = Definition * Expression
+        | LetSyntax of SyntaxBinding list * Expression list
+        | LetRecSyntax of SyntaxBinding list * Expression list
+    and SyntaxBinding = Keyword * Expression
 
     // Characters and string functions
     let str s = pstring s
@@ -54,8 +55,14 @@
     let pIdentifier =
         many1Chars2 pInitial pSubsequent
 
+    let pTuple2WithSpaces p1 p2 =
+        (p1 .>> spaces1) .>>. p2
+
+    let pTuple3WithSpaces p1 p2 p3 =
+        tuple3 (p1 .>> spaces1) (p2 .>> spaces1) p3
+
     let inBrackets bopen bclose p =
-            between (str bopen) (str bclose) p
+        between (str bopen) (str bclose) p
 
     let inAnyBrackets p =
         inBrackets "(" ")" p <|> inBrackets "[" "]" p <|> inBrackets "{" "}" p
@@ -65,15 +72,15 @@
         inAnyBrackets p
 
     let listForm pFirst pRest =
-        let p = ((spaces >>. pFirst .>> spaces1) .>>. pRest .>> spaces)
+        let p = (spaces >>. (pTuple2WithSpaces pFirst pRest) .>> spaces)
         inAnyBrackets p
 
     let listFormIgnore1 pFirst pRest =
-        let p = (spaces >>. pFirst .>> spaces1 >>. pRest .>> spaces)
+        let p = (spaces >>. (pTuple2WithSpaces pFirst pRest |>> snd) .>> spaces)
         inAnyBrackets p
 
     let pairOf pElement =
-        let p = (pipe3 (spaces >>. pElement) (spaces >>. str "." .>> spaces) (pElement .>> spaces) (fun a b c -> a, c))
+        let p = spaces >>. (pipe3 pElement (spaces >>. str "." .>> spaces) pElement (fun a b c -> a, c)) .>> spaces
         inAnyBrackets p
 
     // Forward declaration of parser, needed for recursive parser
@@ -108,20 +115,29 @@
         pairOf pDatum
 
     let pQuote =
-        str "'" .>> spaces >>. pDatum
-        <|> listFormIgnore1 (str "quote") pDatum
+        skipString "'" .>> spaces >>. pDatum
+        <|> listFormIgnore1 (skipString "quote") pDatum
 
     let pVariable =
         pIdentifier
 
     let pIfThen =
-        listFormIgnore1 (str "if") ((pExpr .>> spaces1) .>>. pExpr)
+        listFormIgnore1 (str "if") (pTuple2WithSpaces pExpr pExpr)
 
     let pIfThenElse =
-        listFormIgnore1 (str "if") (tuple3 (pExpr .>> spaces1) (pExpr .>> spaces1) pExpr)
+        listFormIgnore1 (str "if") (pTuple3WithSpaces pExpr pExpr pExpr)
 
     let pApplication =
         listForm pExpr (sepEndBy pExpr spaces1)
+
+    let pKeyword =
+        pIdentifier
+
+    let pSyntaxBinding =
+        listForm pKeyword pExpr
+
+    let pLetSyntax =
+        listFormIgnore1 (str "let-syntax") (pTuple2WithSpaces (listOf pSyntaxBinding) (sepEndBy pExpr spaces1))
 
     // TODO -- nested comments
 //    let lineComment =
@@ -153,6 +169,7 @@
             attempt (pIfThen |>> Expression.IfThen);
             attempt (pIfThenElse |>> Expression.IfThenElse);
             attempt (pQuote |>> Expression.Quote);
+            attempt (pLetSyntax |>> Expression.LetSyntax)
             attempt (pApplication |>> Expression.Application)
             ]
 

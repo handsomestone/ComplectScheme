@@ -213,6 +213,15 @@ type ExpressionTests() =
                 Expression.Variable("func"), 
                 [ Expression.Quote(Datum.Symbol("foo")); Expression.Constant(Constant.Boolean(true)) ]))
 
+    [<TestMethod>]
+    member this.``Let-syntax``() =
+        let v = "(let-syntax ((foo #t) (bar #f)) foo bar)"
+        test Parser.parseExpr v |> should equal
+            (Expression.LetSyntax(
+                [ ("foo", Expression.Constant(Constant.Boolean(true)));
+                  ("bar", Expression.Constant(Constant.Boolean(false))) ],
+                [ Expression.Variable("foo"); Expression.Variable("bar") ]))
+
 //    [<TestMethod>]
 //    member this.``Line comment``() =
 //        let v = "#t ; this is a comment\n#f"
