@@ -222,6 +222,15 @@ type ExpressionTests() =
                   ("bar", Expression.Constant(Constant.Boolean(false))) ],
                 [ Expression.Variable("foo"); Expression.Variable("bar") ]))
 
+    [<TestMethod>]
+    member this.``Letrec-syntax``() =
+        let v = "(letrec-syntax ((foo #t) (bar #f)) foo bar)"
+        test Parser.parseExpr v |> should equal
+            (Expression.LetRecSyntax(
+                [ ("foo", Expression.Constant(Constant.Boolean(true)));
+                  ("bar", Expression.Constant(Constant.Boolean(false))) ],
+                [ Expression.Variable("foo"); Expression.Variable("bar") ]))
+
 //    [<TestMethod>]
 //    member this.``Line comment``() =
 //        let v = "#t ; this is a comment\n#f"

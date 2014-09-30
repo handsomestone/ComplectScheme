@@ -139,6 +139,9 @@
     let pLetSyntax =
         listFormIgnore1 (str "let-syntax") (pTuple2WithSpaces (listOf pSyntaxBinding) (sepEndBy pExpr spaces1))
 
+    let pLetRecSyntax =
+        listFormIgnore1 (str "letrec-syntax") (pTuple2WithSpaces (listOf pSyntaxBinding) (sepEndBy pExpr spaces1))
+
     // TODO -- nested comments
 //    let lineComment =
 //        str ";" >>. restOfLine false |>> Datum.Comment
@@ -170,6 +173,7 @@
             attempt (pIfThenElse |>> Expression.IfThenElse);
             attempt (pQuote |>> Expression.Quote);
             attempt (pLetSyntax |>> Expression.LetSyntax)
+            attempt (pLetRecSyntax |>> Expression.LetRecSyntax)
             attempt (pApplication |>> Expression.Application)
             ]
 
