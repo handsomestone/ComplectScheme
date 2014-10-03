@@ -40,7 +40,7 @@
     and VariableDef =
         | VariableExpr of Identifier * Expression
         | VariableLambda of Identifier * Identifier list * Body
-    and Body = Expression list
+    and Body = Definition list * Expression list
 
     // Characters and string functions
     let str s = pstring s
@@ -159,8 +159,11 @@
     let pForm =
         (pDef |>> Form.Definition) <|> (pExpr |>> Form.Expression)
 
+    let pBody =
+        (sepEndBy pDef spaces1) .>>. (sepEndBy pExpr spaces1)
+
     let pVariableLambdaDef =
-        (listForm pVariable (sepEndBy pVariable spaces1) .>> spaces1) .>>. (sepEndBy pExpr spaces1) |>> (fun ((a, b), c) -> a, b, c)
+        (listForm pVariable (sepEndBy pVariable spaces1) .>> spaces1) .>>. pBody |>> (fun ((a, b), c) -> a, b, c)
 
     let pVariableDef =
         let defBody = 
