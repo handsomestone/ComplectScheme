@@ -214,19 +214,19 @@ type ExpressionTests() =
                 [ Expression.Quote(Datum.Symbol("foo")); Expression.Constant(Constant.Boolean(true)) ]))
 
     [<TestMethod>]
-    member this.``Let-syntax``() =
-        let v = "(let-syntax ((foo #t) (bar #f)) foo bar)"
+    member this.``Let``() =
+        let v = "(let ((foo #t) (bar #f)) foo bar)"
         test Parser.parseExpr v |> should equal
-            (Expression.LetSyntax(
+            (Expression.Let(
                 [ ("foo", Expression.Constant(Constant.Boolean(true)));
                   ("bar", Expression.Constant(Constant.Boolean(false))) ],
                 ([], [ Expression.Variable("foo"); Expression.Variable("bar") ])))
 
     [<TestMethod>]
-    member this.``Letrec-syntax``() =
-        let v = "(letrec-syntax ((foo #t) (bar #f)) foo bar)"
+    member this.``Letrec``() =
+        let v = "(letrec ((foo #t) (bar #f)) foo bar)"
         test Parser.parseExpr v |> should equal
-            (Expression.LetRecSyntax(
+            (Expression.LetRec(
                 [ ("foo", Expression.Constant(Constant.Boolean(true)));
                   ("bar", Expression.Constant(Constant.Boolean(false))) ],
                 ([], [ Expression.Variable("foo"); Expression.Variable("bar") ])))

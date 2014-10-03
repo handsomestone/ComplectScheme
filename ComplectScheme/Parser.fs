@@ -28,6 +28,7 @@
     and Definition =
         | VariableExpr of Identifier * Expression
         | VariableLambda of Identifier * Identifier list * Body
+        | DefSyntax of Keyword * TransformerSpec
     and Expression =
         | Constant of Constant
         | Variable of Identifier
@@ -37,8 +38,21 @@
         | Application of Expression * Expression list
         | LetSyntax of SyntaxBinding list * Body
         | LetRecSyntax of SyntaxBinding list * Body
-    and SyntaxBinding = Keyword * Expression
+        | Let of Binding list * Body
+        | LetRec of Binding list * Body
+    and Binding = Identifier * Expression
+    and SyntaxBinding = Keyword * TransformerSpec
     and Body = Definition list * Expression list
+    and TransformerSpec = Identifier list * SyntaxRule list
+    and SyntaxRule = Pattern * Template
+    and Pattern = 
+        | Identifier of Identifier
+        | Constant of Constant
+        // TODO -- pattern lists
+    and Template = 
+        | Identifier of Identifier
+        | Constant of Constant
+        // TODO -- template lists
 
     // Characters and string functions
     let str s = pstring s
@@ -123,6 +137,14 @@
     let pChar =
         str "#\\" >>. anyChar
 
+    let constant =
+        choice [
+            pStringLiteral |>> Constant.String;
+            pInteger |>> Constant.Number;
+            pChar |>> Constant.Character;
+            pBoolean |>> Constant.Boolean; 
+            ]
+
     let pPair =
         pairOf pDatum
 
@@ -145,14 +167,41 @@
     let pKeyword =
         pIdentifier
 
-    let pSyntaxBinding =
-        listForm pKeyword pExpr
+    let pPattern =
+        choice [
+            pIdentifier |>> Pattern.Identifier;
+            constant |>> Pattern.Constant;
+            ]
+
+    let pTemplate =
+        choice [
+            pIdentifier |>> Template.Identifier;
+            constant |>> Template.Constant;
+            ]
+
+    let pSyntaxRule : Parser<SyntaxRule, _> =
+        listForm pPattern pTemplate
+
+    let pTransformerSpec : Parser<TransformerSpec, _> =
+        listFormIgnore1 (str "syntax-rules") ((listOf pIdentifier) .>>. (listOf pSyntaxRule))
+
+    let pSyntaxBinding : Parser<SyntaxBinding, _> =
+        listForm pKeyword pTransformerSpec
+
+    let pBinding : Parser<Binding, _> =
+        listForm pVariable pExpr
 
     let pLetSyntax =
         listFormIgnore1 (str "let-syntax") (pTuple2WithSpaces (listOf pSyntaxBinding) pBody)
 
     let pLetRecSyntax =
         listFormIgnore1 (str "letrec-syntax") (pTuple2WithSpaces (listOf pSyntaxBinding) pBody)
+
+    let pLet : Parser<Binding list * Body, _> =
+        listFormIgnore1 (str "let") (pTuple2WithSpaces (listOf pBinding) pBody)
+
+    let pLetRec : Parser<Binding list * Body, _> =
+        listFormIgnore1 (str "letrec") (pTuple2WithSpaces (listOf pBinding) pBody)
 
     let pVariableExprDef =
         pTuple2WithSpaces pVariable pExpr
@@ -181,14 +230,6 @@
             pSymbol |>> Datum.Symbol; 
             ]
 
-    let constant =
-        choice [
-            pStringLiteral |>> Constant.String;
-            pInteger |>> Constant.Number;
-            pChar |>> Constant.Character;
-            pBoolean |>> Constant.Boolean; 
-            ]
-
     do pExprRef := 
         choice [ 
             constant |>> Expression.Constant;
@@ -196,8 +237,10 @@
             attempt (pIfThen |>> Expression.IfThen);
             attempt (pIfThenElse |>> Expression.IfThenElse);
             attempt (pQuote |>> Expression.Quote);
-            attempt (pLetSyntax |>> Expression.LetSyntax)
-            attempt (pLetRecSyntax |>> Expression.LetRecSyntax)
+            //attempt (pLetSyntax |>> Expression.LetSyntax)
+            //attempt (pLetRecSyntax |>> Expression.LetRecSyntax)
+            attempt (pLet |>> Expression.Let)
+            attempt (pLetRec |>> Expression.LetRec)
             attempt (pApplication |>> Expression.Application);
             ]
 
