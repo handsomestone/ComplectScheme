@@ -238,7 +238,7 @@ type ExpressionTests() =
 
 [<TestClass>]
 type DefinitionTests() =
-    
+
     [<TestMethod>]
     member this.``Variable expression def``() =
         let v = "(define foo #t)"
@@ -247,3 +247,15 @@ type DefinitionTests() =
                 VariableDef.VariableExpr(
                     "foo", 
                     Expression.Constant(Constant.Boolean(true)))))
+
+    [<TestMethod>]
+    member this.``Variable lambda def``() =
+        let v = "(define (foo x y) #t #f)"
+        test Parser.parseDefinition v |> should equal
+            (Definition.VariableDef(
+                VariableDef.VariableLambda(
+                    "foo",
+                    [ "x"; "y" ],
+                    [ Form.Expression(Expression.Constant(Constant.Boolean(true)));
+                      Form.Expression(Expression.Constant(Constant.Boolean(false))) ])))
+

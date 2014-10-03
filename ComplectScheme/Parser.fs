@@ -20,7 +20,12 @@
         | Pair of Datum * Datum
     and List = Datum list
 
-    type Definition =
+    type Program =
+        | Forms of Form list
+    and Form =
+        | Definition of Definition
+        | Expression of Expression
+    and Definition =
         | VariableDef of VariableDef
     and Expression =
         | Constant of Constant
@@ -34,6 +39,8 @@
     and SyntaxBinding = Keyword * Expression
     and VariableDef =
         | VariableExpr of Identifier * Expression
+        | VariableLambda of Identifier * Identifier list * Body
+    and Body = Form list
 
     // Characters and string functions
     let str s = pstring s
@@ -72,8 +79,8 @@
         inBrackets "(" ")" p <|> inBrackets "[" "]" p <|> inBrackets "{" "}" p
 
     let listOf pElement =
-        let p = (spaces >>. sepEndBy pElement spaces1)
-        inAnyBrackets p
+        inAnyBrackets (spaces >>. sepEndBy pElement spaces1)
+        <|> inAnyBrackets (pTuple2WithSpaces (sepEndBy pElement spaces1) (str "." >>. pElement) |>> (fun (a, b) -> a @ [ b ]))
 
     let listForm pFirst pRest =
         let p = (spaces >>. (pTuple2WithSpaces pFirst pRest) .>> spaces)
@@ -149,12 +156,20 @@
     let pVariableExprDef =
         pTuple2WithSpaces pVariable pExpr
 
+    let pForm =
+        (pDef |>> Form.Definition) <|> (pExpr |>> Form.Expression)
+
+    let pVariableLambdaDef =
+        (listForm pVariable (sepEndBy pVariable spaces1) .>> spaces1) .>>. (sepEndBy pForm spaces1) |>> (fun ((a, b), c) -> a, b, c)
+
     let pVariableDef =
         let defBody = 
-            choice [
-                pVariableExprDef |>> VariableExpr
-                ]
+                attempt (pVariableLambdaDef |>> VariableLambda)
+                <|> (pVariableExprDef |>> VariableExpr)
         listFormIgnore1 (str "define") defBody
+
+    let pProgram =
+        spaces >>. (sepEndBy pForm spaces1)
 
     // TODO -- nested comments
 //    let lineComment =
@@ -199,6 +214,5 @@
     let parseDefinition = pDef
     let parseExpr = pExpr
     let parseDatum = pDatum
-
-    // Parse multiple "statements"
-    let parseAll = spaces >>. many (pExpr .>> spaces)
+    let parseForm = pForm
+    let parseProgram = pProgram
