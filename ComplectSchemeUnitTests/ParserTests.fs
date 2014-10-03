@@ -220,7 +220,7 @@ type ExpressionTests() =
             (Expression.LetSyntax(
                 [ ("foo", Expression.Constant(Constant.Boolean(true)));
                   ("bar", Expression.Constant(Constant.Boolean(false))) ],
-                [ Expression.Variable("foo"); Expression.Variable("bar") ]))
+                ([], [ Expression.Variable("foo"); Expression.Variable("bar") ])))
 
     [<TestMethod>]
     member this.``Letrec-syntax``() =
@@ -229,7 +229,7 @@ type ExpressionTests() =
             (Expression.LetRecSyntax(
                 [ ("foo", Expression.Constant(Constant.Boolean(true)));
                   ("bar", Expression.Constant(Constant.Boolean(false))) ],
-                [ Expression.Variable("foo"); Expression.Variable("bar") ]))
+                ([], [ Expression.Variable("foo"); Expression.Variable("bar") ])))
 
 //    [<TestMethod>]
 //    member this.``Line comment``() =
@@ -249,7 +249,7 @@ type DefinitionTests() =
                     Expression.Constant(Constant.Boolean(true)))))
 
     [<TestMethod>]
-    member this.``Variable lambda def``() =
+    member this.``Variable lambda def, just expressions``() =
         let v = "(define (foo x y) #t #f)"
         test Parser.parseDefinition v |> should equal
             (Definition.VariableDef(

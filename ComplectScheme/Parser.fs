@@ -34,8 +34,8 @@
         | IfThen of Expression * Expression
         | IfThenElse of Expression * Expression * Expression
         | Application of Expression * Expression list
-        | LetSyntax of SyntaxBinding list * Expression list
-        | LetRecSyntax of SyntaxBinding list * Expression list
+        | LetSyntax of SyntaxBinding list * Body
+        | LetRecSyntax of SyntaxBinding list * Body
     and SyntaxBinding = Keyword * Expression
     and VariableDef =
         | VariableExpr of Identifier * Expression
@@ -99,6 +99,9 @@
     let pExpr, pExprRef = createParserForwardedToRef<Expression, unit>()
     let pDef, pDefRef = createParserForwardedToRef<Definition, unit>()
 
+    let pBody =
+        (sepEndBy pDef spaces1) .>>. (sepEndBy pExpr spaces1)
+
     // ( ... )
     let pList =
         listOf pDatum
@@ -148,19 +151,16 @@
         listForm pKeyword pExpr
 
     let pLetSyntax =
-        listFormIgnore1 (str "let-syntax") (pTuple2WithSpaces (listOf pSyntaxBinding) (sepEndBy pExpr spaces1))
+        listFormIgnore1 (str "let-syntax") (pTuple2WithSpaces (listOf pSyntaxBinding) pBody)
 
     let pLetRecSyntax =
-        listFormIgnore1 (str "letrec-syntax") (pTuple2WithSpaces (listOf pSyntaxBinding) (sepEndBy pExpr spaces1))
+        listFormIgnore1 (str "letrec-syntax") (pTuple2WithSpaces (listOf pSyntaxBinding) pBody)
 
     let pVariableExprDef =
         pTuple2WithSpaces pVariable pExpr
 
     let pForm =
         (pDef |>> Form.Definition) <|> (pExpr |>> Form.Expression)
-
-    let pBody =
-        (sepEndBy pDef spaces1) .>>. (sepEndBy pExpr spaces1)
 
     let pVariableLambdaDef =
         (listForm pVariable (sepEndBy pVariable spaces1) .>> spaces1) .>>. pBody |>> (fun ((a, b), c) -> a, b, c)
