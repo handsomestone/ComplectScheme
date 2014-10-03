@@ -243,20 +243,18 @@ type DefinitionTests() =
     member this.``Variable expression def``() =
         let v = "(define foo #t)"
         test Parser.parseDefinition v |> should equal
-            (Definition.VariableDef(
-                VariableDef.VariableExpr(
-                    "foo", 
-                    Expression.Constant(Constant.Boolean(true)))))
+            (Definition.VariableExpr(
+                "foo",
+                Expression.Constant(Constant.Boolean(true))))
 
     [<TestMethod>]
     member this.``Variable lambda def, just expressions``() =
         let v = "(define (foo x y) #t #f)"
         test Parser.parseDefinition v |> should equal
-            (Definition.VariableDef(
-                VariableDef.VariableLambda(
-                    "foo",
-                    [ "x"; "y" ],
-                    ([], 
-                     [ Expression.Constant(Constant.Boolean(true));
-                       Expression.Constant(Constant.Boolean(false)) ]))))
+            (Definition.VariableLambda(
+                "foo",
+                [ "x"; "y" ],
+                ([], 
+                    [ Expression.Constant(Constant.Boolean(true));
+                    Expression.Constant(Constant.Boolean(false)) ])))
 

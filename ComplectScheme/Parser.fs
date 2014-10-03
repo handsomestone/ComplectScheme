@@ -26,7 +26,8 @@
         | Definition of Definition
         | Expression of Expression
     and Definition =
-        | VariableDef of VariableDef
+        | VariableExpr of Identifier * Expression
+        | VariableLambda of Identifier * Identifier list * Body
     and Expression =
         | Constant of Constant
         | Variable of Identifier
@@ -37,9 +38,6 @@
         | LetSyntax of SyntaxBinding list * Body
         | LetRecSyntax of SyntaxBinding list * Body
     and SyntaxBinding = Keyword * Expression
-    and VariableDef =
-        | VariableExpr of Identifier * Expression
-        | VariableLambda of Identifier * Identifier list * Body
     and Body = Definition list * Expression list
 
     // Characters and string functions
@@ -165,12 +163,6 @@
     let pVariableLambdaDef =
         (listForm pVariable (sepEndBy pVariable spaces1) .>> spaces1) .>>. pBody |>> (fun ((a, b), c) -> a, b, c)
 
-    let pVariableDef =
-        let defBody = 
-                attempt (pVariableLambdaDef |>> VariableLambda)
-                <|> (pVariableExprDef |>> VariableExpr)
-        listFormIgnore1 (str "define") defBody
-
     let pProgram =
         spaces >>. (sepEndBy pForm spaces1)
 
@@ -210,9 +202,10 @@
             ]
 
     do pDefRef :=
-        choice [
-            pVariableDef |>> Definition.VariableDef;
-            ]
+        let defBody = 
+            attempt (pVariableLambdaDef |>> VariableLambda)
+            <|> (pVariableExprDef |>> VariableExpr)
+        listFormIgnore1 (str "define") defBody
 
     let parseDefinition = pDef
     let parseExpr = pExpr
