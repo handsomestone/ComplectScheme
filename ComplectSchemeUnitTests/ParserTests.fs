@@ -256,6 +256,6 @@ type DefinitionTests() =
                 VariableDef.VariableLambda(
                     "foo",
                     [ "x"; "y" ],
-                    [ Form.Expression(Expression.Constant(Constant.Boolean(true)));
-                      Form.Expression(Expression.Constant(Constant.Boolean(false))) ])))
+                    [ Expression.Constant(Constant.Boolean(true));
+                      Expression.Constant(Constant.Boolean(false)) ])))
 
