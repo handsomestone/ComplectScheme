@@ -164,31 +164,31 @@ type ExpressionTests() =
         test Parser.parseExpr v |> should equal (Expression.Variable("foo"))
 
     [<TestMethod>]
-    member this.``Boolean constant``() =
+    member this.``Boolean Literal``() =
         let v = "#t"
-        test Parser.parseExpr v |> should equal (Expression.Constant(Constant.Boolean(true)))
+        test Parser.parseExpr v |> should equal (Expression.Literal(Literal.Boolean(true)))
 
     [<TestMethod>]
-    member this.``String constant``() =
+    member this.``String Literal``() =
         let v = "\"foo\""
-        test Parser.parseExpr v |> should equal (Expression.Constant(Constant.String("foo")))
+        test Parser.parseExpr v |> should equal (Expression.Literal(Literal.String("foo")))
 
     [<TestMethod>]
-    member this.``Number constant``() =
+    member this.``Number Literal``() =
         let v = "123"
-        test Parser.parseExpr v |> should equal (Expression.Constant(Constant.Number(123)))
+        test Parser.parseExpr v |> should equal (Expression.Literal(Literal.Number(123)))
 
     [<TestMethod>]
-    member this.``Character constant``() =
+    member this.``Character Literal``() =
         let v = "#\\a"
-        test Parser.parseExpr v |> should equal (Expression.Constant(Constant.Character('a')))
+        test Parser.parseExpr v |> should equal (Expression.Literal(Literal.Character('a')))
 
     [<TestMethod>]
     member this.``If then``() =
         let v = "(if #t 'foo)"
         test Parser.parseExpr v |> should equal 
             (Expression.IfThen(
-                Expression.Constant(Constant.Boolean(true)),
+                Expression.Literal(Literal.Boolean(true)),
                 Expression.Quote(Datum.Symbol("foo"))))
 
     [<TestMethod>]
@@ -196,7 +196,7 @@ type ExpressionTests() =
         let v = "(if #t 'foo 'bar)"
         test Parser.parseExpr v |> should equal 
             (Expression.IfThenElse(
-                Expression.Constant(Constant.Boolean(true)),
+                Expression.Literal(Literal.Boolean(true)),
                 Expression.Quote(Datum.Symbol("foo")),
                 Expression.Quote(Datum.Symbol("bar"))))
 
@@ -206,15 +206,15 @@ type ExpressionTests() =
         test Parser.parseExpr v |> should equal 
             (Expression.Application(
                 Expression.Variable("func"), 
-                [ Expression.Quote(Datum.Symbol("foo")); Expression.Constant(Constant.Boolean(true)) ]))
+                [ Expression.Quote(Datum.Symbol("foo")); Expression.Literal(Literal.Boolean(true)) ]))
 
     [<TestMethod>]
     member this.``Let``() =
         let v = "(let ((foo #t) (bar #f)) foo bar)"
         test Parser.parseExpr v |> should equal
             (Expression.Let(
-                [ ("foo", Expression.Constant(Constant.Boolean(true)));
-                  ("bar", Expression.Constant(Constant.Boolean(false))) ],
+                [ ("foo", Expression.Literal(Literal.Boolean(true)));
+                  ("bar", Expression.Literal(Literal.Boolean(false))) ],
                 ([], [ Expression.Variable("foo"); Expression.Variable("bar") ])))
 
     [<TestMethod>]
@@ -222,8 +222,8 @@ type ExpressionTests() =
         let v = "(letrec ((foo #t) (bar #f)) foo bar)"
         test Parser.parseExpr v |> should equal
             (Expression.LetRec(
-                [ ("foo", Expression.Constant(Constant.Boolean(true)));
-                  ("bar", Expression.Constant(Constant.Boolean(false))) ],
+                [ ("foo", Expression.Literal(Literal.Boolean(true)));
+                  ("bar", Expression.Literal(Literal.Boolean(false))) ],
                 ([], [ Expression.Variable("foo"); Expression.Variable("bar") ])))
 
 //    [<TestMethod>]
@@ -240,7 +240,7 @@ type DefinitionTests() =
         test Parser.parseDefinition v |> should equal
             (Definition.VariableExpr(
                 "foo",
-                Expression.Constant(Constant.Boolean(true))))
+                Expression.Literal(Literal.Boolean(true))))
 
     [<TestMethod>]
     member this.``Variable lambda def, just expressions``() =
@@ -250,6 +250,6 @@ type DefinitionTests() =
                 "foo",
                 [ "x"; "y" ],
                 ([], 
-                    [ Expression.Constant(Constant.Boolean(true));
-                    Expression.Constant(Constant.Boolean(false)) ])))
+                    [ Expression.Literal(Literal.Boolean(true));
+                    Expression.Literal(Literal.Boolean(false)) ])))
 

@@ -4,7 +4,7 @@
     type Identifier = string
     type Keyword = string
 
-    type Constant =
+    type Literal =
         | Character of char
         | Number of int
         | String of string
@@ -29,7 +29,7 @@
         | VariableLambda of Identifier * Identifier list * Body
         | DefSyntax of Keyword * TransformerSpec
     and Expression =
-        | Constant of Constant
+        | Literal of Literal
         | Variable of Identifier
         | Quote of Datum
         | IfThen of Expression * Expression
@@ -46,11 +46,11 @@
     and SyntaxRule = Pattern * Template
     and Pattern = 
         | Identifier of Identifier
-        | Constant of Constant
+        | Literal of Literal
         // TODO -- pattern lists
     and Template = 
         | Identifier of Identifier
-        | Constant of Constant
+        | Literal of Literal
         // TODO -- template lists
 
     // Characters and string functions
@@ -128,12 +128,12 @@
     let pChar =
         str "#\\" >>. anyChar
 
-    let constant =
+    let pLiteral =
         choice [
-            pStringLiteral |>> Constant.String;
-            pInteger |>> Constant.Number;
-            pChar |>> Constant.Character;
-            pBoolean |>> Constant.Boolean; 
+            pStringLiteral |>> Literal.String;
+            pInteger |>> Literal.Number;
+            pChar |>> Literal.Character;
+            pBoolean |>> Literal.Boolean; 
             ]
 
     let pQuote =
@@ -158,13 +158,13 @@
     let pPattern =
         choice [
             pIdentifier |>> Pattern.Identifier;
-            constant |>> Pattern.Constant;
+            pLiteral |>> Pattern.Literal;
             ]
 
     let pTemplate =
         choice [
             pIdentifier |>> Template.Identifier;
-            constant |>> Template.Constant;
+            pLiteral |>> Template.Literal;
             ]
 
     let pSyntaxRule : Parser<SyntaxRule, _> =
@@ -219,7 +219,7 @@
 
     do pExprRef := 
         choice [ 
-            constant |>> Expression.Constant;
+            pLiteral |>> Expression.Literal;
             pVariable |>> Expression.Variable;
             attempt (pIfThen |>> Expression.IfThen);
             attempt (pIfThenElse |>> Expression.IfThenElse);
