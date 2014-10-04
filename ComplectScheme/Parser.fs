@@ -56,10 +56,17 @@
     // Characters and string functions
     let str s = pstring s
     let validStringContents c = c <> '"'
+    let expressionKeywords = [ "quote"; "lambda"; "if"; "set!"; "begin"; "cond"; "and"; "or"; "case"; "let"; "let*"; "letrec"; "do"; "delay"; "quasiquote" ]
+    let syntacticKeywords = expressionKeywords @ [ "else"; "=>"; "define"; "unquote"; "unquote-splicing" ]
 
     let pSymbolEscape = 
-        str "\\" >>. anyChar 
-        // <|> str "|" >>. manySatisfy (isNoneOf [ '|' ])
+        str "\\" >>. anyChar
+
+    let except (p : Parser<'a,_>) (predicate : 'a -> bool) msg =
+        p >>= (fun x -> 
+            match predicate x with
+                | false -> preturn x
+                | true -> fail msg)
 
     let pInitial = 
         letter <|>
@@ -140,8 +147,11 @@
         skipString "'" .>> spaces >>. pDatum
         <|> listFormIgnore1 (skipString "quote") pDatum
 
-    let pVariable =
-        pIdentifier
+    let pVariable = 
+        except pIdentifier (fun p -> 
+            List.tryFind ((=) p) syntacticKeywords 
+            |> function None -> false | _ -> true)
+            "reserved identifier"
 
     let pIfThen =
         listFormIgnore1 (str "if") (pTuple2WithSpaces pExpr pExpr)
