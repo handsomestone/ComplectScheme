@@ -59,7 +59,7 @@ type DatumTests() =
 
     [<TestMethod>]
     member this.``Integers``() =
-        let v = ["1"; "-20"]
+        let v = ["1"; "-20" ]
         testAll Parser.parseDatum v |> should equal [ Datum.Number(1); Datum.Number(-20) ]
 
     [<TestMethod>]
@@ -82,7 +82,7 @@ type DatumTests() =
                   Datum.Number(1); 
                   Datum.Boolean(true);
                   Datum.Character('A');
-                  Datum.Pair(Datum.Symbol("a"), Datum.Symbol("b"));
+                  Datum.List([ Datum.Symbol("a"); Datum.Symbol("b") ]);
                   Datum.List([ Datum.Symbol("foo") ]) ]))
 
     [<TestMethod>]
@@ -105,22 +105,22 @@ type DatumTests() =
     [<TestMethod>]
     member this.``Pair in ()``() =
         let v = "(foo . bar)"
-        test Parser.parseDatum v |> should equal (Datum.Pair(Datum.Symbol("foo"), Datum.Symbol("bar")))
+        test Parser.parseDatum v |> should equal (Datum.List([ Datum.Symbol("foo"); Datum.Symbol("bar") ]))
 
     [<TestMethod>]
     member this.``Pair in []``() =
         let v = "[foo . bar]"
-        test Parser.parseDatum v |> should equal (Datum.Pair(Datum.Symbol("foo"), Datum.Symbol("bar")))
+        test Parser.parseDatum v |> should equal (Datum.List([ Datum.Symbol("foo"); Datum.Symbol("bar") ]))
 
     [<TestMethod>]
     member this.``Pair in {}``() =
         let v = "{foo . bar}"
-        test Parser.parseDatum v |> should equal (Datum.Pair(Datum.Symbol("foo"), Datum.Symbol("bar")))
+        test Parser.parseDatum v |> should equal (Datum.List([ Datum.Symbol("foo"); Datum.Symbol("bar") ]))
 
-    [<TestMethod>]
-    member this.``Pairs, with int``() =
-        let v = "(1.bar)"
-        test Parser.parseDatum v |> should equal (Datum.Pair(Datum.Number(1), Datum.Symbol("bar")))
+//    [<TestMethod>]
+//    member this.``Pairs, with int``() =
+//        let v = "(1.bar)"
+//        test Parser.parseDatum v |> should equal (Datum.List([ Datum.Symbol("1.bar") ]))
 
     [<TestMethod>]
     member this.``Symbol with dot``() =
@@ -139,11 +139,6 @@ type IdentifierTests() =
     member this.``Starts with hash``() =
         let v = "#foo123"
         (fun () -> test Parser.pIdentifier v |> ignore) |> should throw typeof<System.Exception>
-
-    [<TestMethod>]
-    member this.``Contains hash``() =
-        let v = "a#foo123"
-        test Parser.pIdentifier v |> should equal "a#foo123"
 
 [<TestClass>]
 type ExpressionTests() =

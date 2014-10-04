@@ -17,7 +17,6 @@
         | String of string
         | Symbol of string
         | List of List
-        | Pair of Datum * Datum
     and List = Datum list
 
     type Program =
@@ -56,11 +55,6 @@
 
     // Characters and string functions
     let str s = pstring s
-    
-    let reservedChars = Set.ofList [ '('; ')'; '['; ']'; '{'; '}'; '\''; '.' ]
-    let isPunc c = System.Char.IsPunctuation(c)
-    let isSymbol c = System.Char.IsSymbol(c)
-    let isReserved c = reservedChars |> Set.contains c
     let validStringContents c = c <> '"'
 
     let pSymbolEscape = 
@@ -71,15 +65,16 @@
         letter <|>
         digit <|>
         pSymbolEscape <|>
-        satisfy (isAnyOf [ '.'; '+'; '-'; '!'; '$'; '%'; '&'; '*'; '/'; ':'; '<'; '='; '>'; '?'; '~'; '_'; '^'; '@' ])
+        satisfy (isAnyOf [ '!'; '$'; '%'; '&'; '*'; '/'; ':'; '<'; '='; '>'; '?'; '^'; '_'; '~' ])
     let pSubsequent =
-        pInitial <|> pchar '#'
+        pInitial <|> satisfy (isAnyOf [ '+'; '-'; '.'; '@' ])
 
     let pIdentifier =
         many1Chars2 pInitial pSubsequent
+        <|> (str "+") <|> (str "-") <|> (str "...")
 
     let pTuple2WithSpaces p1 p2 =
-        (p1 .>> spaces1) .>>. p2
+        (p1 .>> spaces) .>>. p2
 
     let pTuple3WithSpaces p1 p2 p3 =
         tuple3 (p1 .>> spaces1) (p2 .>> spaces1) p3
@@ -90,10 +85,6 @@
     let inAnyBrackets p =
         inBrackets "(" ")" p <|> inBrackets "[" "]" p <|> inBrackets "{" "}" p
 
-    let listOf pElement =
-        inAnyBrackets (spaces >>. sepEndBy pElement spaces1)
-        <|> inAnyBrackets (pTuple2WithSpaces (sepEndBy pElement spaces1) (str "." >>. pElement) |>> (fun (a, b) -> a @ [ b ]))
-
     let listForm pFirst pRest =
         let p = (spaces >>. (pTuple2WithSpaces pFirst pRest) .>> spaces)
         inAnyBrackets p
@@ -102,9 +93,9 @@
         let p = (spaces >>. (pTuple2WithSpaces pFirst pRest |>> snd) .>> spaces)
         inAnyBrackets p
 
-    let pairOf pElement =
-        let p = spaces >>. (pipe3 pElement (spaces >>. str "." .>> spaces) pElement (fun a b c -> a, c)) .>> spaces
-        inAnyBrackets p
+    let listOf pElement =
+        attempt (listForm (sepEndBy1 pElement spaces1) (str "." >>. spaces1 >>. pElement) |>> (fun (a, b) -> a @ [ b ]))
+        <|> inAnyBrackets (spaces >>. sepEndBy pElement spaces1)
 
     // Forward declaration of parser, needed for recursive parser
     let pDatum, pDatumRef = createParserForwardedToRef<Datum, unit>()
@@ -144,9 +135,6 @@
             pChar |>> Constant.Character;
             pBoolean |>> Constant.Boolean; 
             ]
-
-    let pPair =
-        pairOf pDatum
 
     let pQuote =
         skipString "'" .>> spaces >>. pDatum
@@ -220,8 +208,7 @@
 //        str ";" >>. restOfLine false |>> Datum.Comment
 
     do pDatumRef :=
-        choice [ 
-            attempt (pPair |>> Datum.Pair);
+        choice [
             pList |>> Datum.List;
             pStringLiteral |>> Datum.String;
             pInteger |>> Datum.Number;
