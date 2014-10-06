@@ -4,12 +4,6 @@
     type Identifier = string
     type Keyword = string
 
-    type Literal =
-        | Character of char
-        | Number of int
-        | String of string
-        | Boolean of bool
-
     type Datum =
         | Boolean of bool
         | Number of int
@@ -29,9 +23,8 @@
         | VariableLambda of Identifier * Identifier list * Body
         | DefSyntax of Keyword * TransformerSpec
     and Expression =
-        | Literal of Literal
+        | Literal of Datum
         | Variable of Identifier
-        | Quote of Datum
         | IfThen of Expression * Expression
         | IfThenElse of Expression * Expression * Expression
         | Application of Expression * Expression list
@@ -46,11 +39,11 @@
     and SyntaxRule = Pattern * Template
     and Pattern = 
         | Identifier of Identifier
-        | Literal of Literal
+        | Literal of Datum
         // TODO -- pattern lists
     and Template = 
         | Identifier of Identifier
-        | Literal of Literal
+        | Literal of Datum
         // TODO -- template lists
 
     // Characters and string functions
@@ -135,17 +128,18 @@
     let pChar =
         str "#\\" >>. anyChar
 
-    let pLiteral =
-        choice [
-            pStringLiteral |>> Literal.String;
-            pInteger |>> Literal.Number;
-            pChar |>> Literal.Character;
-            pBoolean |>> Literal.Boolean; 
-            ]
-
     let pQuote =
         skipString "'" .>> spaces >>. pDatum
         <|> listFormIgnore1 (skipString "quote") pDatum
+
+    let pLiteral =
+        choice [
+            pStringLiteral |>> Datum.String;
+            pInteger |>> Datum.Number;
+            pChar |>> Datum.Character;
+            pBoolean |>> Datum.Boolean;
+            attempt pQuote
+            ]
 
     let pVariable = 
         except pIdentifier (fun p -> 
@@ -233,7 +227,6 @@
             pVariable |>> Expression.Variable;
             attempt (pIfThen |>> Expression.IfThen);
             attempt (pIfThenElse |>> Expression.IfThenElse);
-            attempt (pQuote |>> Expression.Quote);
             //attempt (pLetSyntax |>> Expression.LetSyntax)
             //attempt (pLetRecSyntax |>> Expression.LetRecSyntax)
             attempt (pLet |>> Expression.Let)
