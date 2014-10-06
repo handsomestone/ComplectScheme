@@ -187,18 +187,19 @@ type ExpressionTests() =
     member this.``If then``() =
         let v = "(if #t 'foo)"
         test Parser.parseExpr v |> should equal 
-            (Expression.IfThen(
+            (Expression.Conditional(
                 Expression.Literal(Datum.Boolean(true)),
-                Expression.Literal(Datum.Symbol("foo"))))
+                Expression.Literal(Datum.Symbol("foo")),
+                None))
 
     [<TestMethod>]
     member this.``If then else``() =
         let v = "(if #t 'foo 'bar)"
         test Parser.parseExpr v |> should equal 
-            (Expression.IfThenElse(
+            (Expression.Conditional(
                 Expression.Literal(Datum.Boolean(true)),
                 Expression.Literal(Datum.Symbol("foo")),
-                Expression.Literal(Datum.Symbol("bar"))))
+                Some(Expression.Literal(Datum.Symbol("bar")))))
 
     [<TestMethod>]
     member this.``Application``() =

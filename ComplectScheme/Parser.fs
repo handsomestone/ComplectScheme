@@ -24,14 +24,16 @@
         | DefSyntax of Keyword * TransformerSpec
     and Expression =
         | Literal of Datum
-        | Variable of Identifier
-        | IfThen of Expression * Expression
-        | IfThenElse of Expression * Expression * Expression
+        | Variable of Variable
+        | Conditional of Expression * Expression * Expression option
         | Application of Expression * Expression list
+        | Lambda of Variable list * Body
         | LetSyntax of SyntaxBinding list * Body
         | LetRecSyntax of SyntaxBinding list * Body
         | Let of Binding list * Body
         | LetRec of Binding list * Body
+    and Variable = Identifier
+    and Formals = Variable list
     and Binding = Identifier * Expression
     and SyntaxBinding = Keyword * TransformerSpec
     and Body = Definition list * Expression list
@@ -225,8 +227,8 @@
         choice [ 
             pLiteral |>> Expression.Literal;
             pVariable |>> Expression.Variable;
-            attempt (pIfThen |>> Expression.IfThen);
-            attempt (pIfThenElse |>> Expression.IfThenElse);
+            attempt (pIfThen |>> (fun (x, y) -> Expression.Conditional(x, y, None)));
+            attempt (pIfThenElse |>> (fun (x, y, z) -> Expression.Conditional(x, y, Some z)));
             //attempt (pLetSyntax |>> Expression.LetSyntax)
             //attempt (pLetRecSyntax |>> Expression.LetRecSyntax)
             attempt (pLet |>> Expression.Let)
